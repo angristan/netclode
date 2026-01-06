@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+
+# Dependencies (installed in Docker)
+node_modules
+.bun
+
+# Build artifacts
+dist
+.turbo
+.next
+
+# IDE and editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Kubernetes (not needed in app image)
+k8s/
+
+# Test and dev files
+*.test.ts
+*.spec.ts
+__tests__
+coverage/
+*.log
+.env.local
+.env.development
