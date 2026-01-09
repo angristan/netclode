@@ -37,6 +37,7 @@
 		A10000000000000000000026 /* GlassButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000026 /* GlassButton.swift */; };
 		A10000000000000000000027 /* GlassTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000027 /* GlassTextField.swift */; };
 		A10000000000000000000028 /* ConnectionStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000028 /* ConnectionStatusBadge.swift */; };
+		A10000000000000000000040 /* ThinkingAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000040 /* ThinkingAnimation.swift */; };
 		A10000000000000000000029 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000029 /* Theme.swift */; };
 		A10000000000000000000030 /* Animations.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000030 /* Animations.swift */; };
 		A10000000000000000000031 /* View+Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000031 /* View+Glass.swift */; };
@@ -76,6 +77,7 @@
 		B10000000000000000000026 /* GlassButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassButton.swift; sourceTree = "<group>"; };
 		B10000000000000000000027 /* GlassTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassTextField.swift; sourceTree = "<group>"; };
 		B10000000000000000000028 /* ConnectionStatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStatusBadge.swift; sourceTree = "<group>"; };
+		B10000000000000000000040 /* ThinkingAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingAnimation.swift; sourceTree = "<group>"; };
 		B10000000000000000000029 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		B10000000000000000000030 /* Animations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Animations.swift; sourceTree = "<group>"; };
 		B10000000000000000000031 /* View+Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+Glass.swift"; sourceTree = "<group>"; };
@@ -231,6 +233,7 @@
 				B10000000000000000000026 /* GlassButton.swift */,
 				B10000000000000000000027 /* GlassTextField.swift */,
 				B10000000000000000000028 /* ConnectionStatusBadge.swift */,
+				B10000000000000000000040 /* ThinkingAnimation.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -387,6 +390,7 @@
 				A10000000000000000000026 /* GlassButton.swift in Sources */,
 				A10000000000000000000027 /* GlassTextField.swift in Sources */,
 				A10000000000000000000028 /* ConnectionStatusBadge.swift in Sources */,
+				A10000000000000000000040 /* ThinkingAnimation.swift in Sources */,
 				A10000000000000000000029 /* Theme.swift in Sources */,
 				A10000000000000000000030 /* Animations.swift in Sources */,
 				A10000000000000000000031 /* View+Glass.swift in Sources */,

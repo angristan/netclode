@@ -273,6 +273,9 @@ struct ChatView: View {
             message: ChatMessage(role: .user, content: text)
         )
 
+        // Start processing state immediately (shows thinking animation)
+        sessionStore.setProcessing(for: sessionId, processing: true)
+
         // Send to server
         webSocketService.send(.prompt(sessionId: sessionId, text: text))
 
@@ -418,6 +421,23 @@ struct ExposePortSheet: View {
     .environment(chatStore)
     .environment(EventStore())
     .environment(SessionStore())
+    .environment(SettingsStore())
+    .environment(WebSocketService())
+}
+
+#Preview("Processing State") {
+    let chatStore = ChatStore()
+    let sessionStore = SessionStore()
+    
+    chatStore.appendMessage(sessionId: "test", message: ChatMessage.previewUser)
+    sessionStore.setProcessing(for: "test", processing: true)
+
+    return NavigationStack {
+        ChatView(sessionId: "test")
+    }
+    .environment(chatStore)
+    .environment(EventStore())
+    .environment(sessionStore)
     .environment(SettingsStore())
     .environment(WebSocketService())
 }

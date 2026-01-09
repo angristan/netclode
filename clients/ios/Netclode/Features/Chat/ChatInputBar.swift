@@ -81,57 +81,8 @@ struct ChatInputBar: View {
 // MARK: - Streaming Indicator
 
 struct StreamingIndicator: View {
-    @State private var animatingDot = 0
-    @State private var animationTimer: Timer?
-
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-            // Avatar
-            Image(systemName: "brain.head.profile")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white)
-                .frame(width: 28, height: 28)
-                .glassEffect(
-                    .regular.tint(Theme.Colors.brand.glassTint),
-                    in: Circle()
-                )
-
-            // Typing indicator
-            HStack(spacing: 4) {
-                ForEach(0..<3, id: \.self) { index in
-                    Circle()
-                        .fill(Theme.Colors.brand)
-                        .frame(width: 8, height: 8)
-                        .offset(y: animatingDot == index ? -4 : 0)
-                }
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.Radius.lg))
-
-            Spacer()
-        }
-        .onAppear {
-            startAnimation()
-        }
-        .onDisappear {
-            stopAnimation()
-        }
-    }
-
-    private func startAnimation() {
-        // Invalidate any existing timer first
-        animationTimer?.invalidate()
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { _ in
-            withAnimation(.bouncy) {
-                animatingDot = (animatingDot + 1) % 3
-            }
-        }
-    }
-
-    private func stopAnimation() {
-        animationTimer?.invalidate()
-        animationTimer = nil
+        MorphingSymbolsThinking()
     }
 }
 

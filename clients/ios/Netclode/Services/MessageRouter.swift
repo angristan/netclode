@@ -162,6 +162,8 @@ final class MessageRouter {
                         sessionId: session.id,
                         message: ChatMessage(role: .user, content: promptText)
                     )
+                    // Start processing state immediately (shows thinking animation)
+                    sessionStore.setProcessing(for: session.id, processing: true)
                     webSocketService.send(.prompt(sessionId: session.id, text: promptText))
                     print("[MessageRouter] Sent initial prompt for session \(session.id)")
                     // DON'T clear pending state yet - wait for agent response
