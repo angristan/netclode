@@ -82,7 +82,23 @@ final class MessageRouter {
             sessionStore.setProcessing(for: sessionId, processing: true)
 
         case .agentEvent(let sessionId, let event):
-            eventStore.appendEvent(sessionId: sessionId, event: event)
+            // Handle thinking events specially for streaming
+            if case .thinking(let thinkingEvent) = event {
+                if thinkingEvent.partial {
+                    // Streaming thinking - accumulate content
+                    eventStore.appendThinkingPartial(
+                        sessionId: sessionId,
+                        thinkingId: thinkingEvent.thinkingId,
+                        content: thinkingEvent.content,
+                        timestamp: thinkingEvent.timestamp
+                    )
+                } else {
+                    // Complete thinking block - add as final event
+                    eventStore.appendEvent(sessionId: sessionId, event: event)
+                }
+            } else {
+                eventStore.appendEvent(sessionId: sessionId, event: event)
+            }
 
         case .agentDone(let sessionId):
             sessionStore.setProcessing(for: sessionId, processing: false)

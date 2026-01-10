@@ -114,7 +114,7 @@ const q = query({
 });
 
 for await (const message of q) {
-  // system, assistant, user, result, stream_event
+  // system, assistant (text, tool_use, thinking), user, result, stream_event
 }
 ```
 
@@ -194,6 +194,40 @@ docker build -t ghcr.io/angristan/netclode-agent:latest -f services/agent/Docker
 ```
 
 Includes Debian bookworm-slim, Node.js via mise, Docker, Git, curl, build-essential, Claude CLI.
+
+## SSE Event Types
+
+Events streamed via Server-Sent Events during prompt execution:
+
+| Type | Description |
+|------|-------------|
+| `start` | Prompt execution started |
+| `agent.system` | SDK system message (init, session ID) |
+| `agent.message` | Text content from Claude (`partial: true` for streaming) |
+| `agent.event` | Tool/command events (see below) |
+| `agent.result` | Final result with `numTurns` and `costUsd` |
+| `done` | Prompt execution completed |
+| `error` | Error occurred |
+
+### Agent Events (`agent.event`)
+
+| Event Kind | Description | Fields |
+|------------|-------------|--------|
+| `tool_start` | Tool invocation started | `tool`, `toolUseId`, `input` |
+| `tool_input` | Streaming tool input | `toolUseId`, `inputDelta` |
+| `tool_end` | Tool completed | `tool`, `toolUseId`, `result?`, `error?` |
+| `thinking` | Extended thinking content | `thinkingId`, `content`, `partial` |
+
+All events include a `timestamp` field (ISO 8601).
+
+### Thinking Events
+
+When using models that support extended thinking (e.g., `claude-opus-4-5-20251101`), the agent streams thinking content in real-time:
+
+- `partial: true` - Streaming delta (accumulate by `thinkingId`)
+- `partial: false` - Complete thinking block
+
+Clients should accumulate content for events with the same `thinkingId` to build up the full thinking output.
 
 ## Debugging
 

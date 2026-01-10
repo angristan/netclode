@@ -156,6 +156,8 @@ private struct RawAgentEvent: Decodable {
 
     // Thinking
     let content: String?
+    let thinkingId: String?
+    let partial: Bool?
 
     // Port detected
     let port: Int?
@@ -233,7 +235,9 @@ private struct RawAgentEvent: Decodable {
             return .thinking(ThinkingEvent(
                 id: id,
                 timestamp: timestamp,
-                content: content ?? ""
+                thinkingId: thinkingId ?? "thinking_\(id.uuidString)",
+                content: content ?? "",
+                partial: partial ?? false
             ))
 
         case "port_exposed":
@@ -249,7 +253,9 @@ private struct RawAgentEvent: Decodable {
             return .thinking(ThinkingEvent(
                 id: id,
                 timestamp: timestamp,
-                content: "Unknown event: \(kind)"
+                thinkingId: "unknown_\(id.uuidString)",
+                content: "Unknown event: \(kind)",
+                partial: false
             ))
         }
     }

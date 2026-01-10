@@ -185,7 +185,9 @@ struct ThinkingEvent: AgentEventProtocol {
     let id: UUID
     let kind: AgentEventKind = .thinking
     let timestamp: Date
-    let content: String
+    let thinkingId: String  // Correlate streaming updates for same thinking block
+    var content: String     // Mutable to accumulate streaming content
+    let partial: Bool       // true = streaming delta, false = complete block
 }
 
 struct PortExposedEvent: AgentEventProtocol {
@@ -302,7 +304,9 @@ extension AgentEvent {
     static let previewThinking = AgentEvent.thinking(ThinkingEvent(
         id: UUID(),
         timestamp: Date(),
-        content: "Analyzing the codebase structure..."
+        thinkingId: "thinking_preview_1",
+        content: "Analyzing the codebase structure...",
+        partial: false
     ))
 
     static let previewList: [AgentEvent] = [

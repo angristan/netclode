@@ -514,25 +514,59 @@ struct FileChangeCard: View {
 
 struct ThinkingCard: View {
     let event: ThinkingEvent
+    @State private var isExpanded = false
 
     var body: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            Image(systemName: "brain.head.profile")
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.Colors.brandLight)
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            // Header row with icon and status
+            HStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.Colors.brandLight)
+                    .opacity(event.partial ? 1.0 : 0.7)
 
+                Text("Thinking")
+                    .font(.netclodeCaption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(Theme.Colors.brandLight)
+
+                if event.partial {
+                    // Pulsing indicator for streaming
+                    Circle()
+                        .fill(Theme.Colors.brandLight)
+                        .frame(width: 6, height: 6)
+                        .opacity(0.8)
+                }
+
+                Spacer()
+
+                if !event.partial && event.content.count > 100 {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isExpanded.toggle()
+                        }
+                    } label: {
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // Content
             Text(event.content)
                 .font(.netclodeCaption)
                 .foregroundStyle(.secondary)
                 .italic()
-                .lineLimit(2)
-
-            Spacer()
+                .lineLimit(isExpanded || event.partial ? nil : 3)
+                .animation(.easeInOut(duration: 0.2), value: event.content)
         }
         .padding(.horizontal, Theme.Spacing.sm)
         .padding(.vertical, Theme.Spacing.xs)
-        .background(Theme.Colors.brandLight.opacity(0.1))
+        .background(Theme.Colors.brandLight.opacity(event.partial ? 0.15 : 0.1))
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
+        .animation(.easeInOut(duration: 0.2), value: event.partial)
     }
 }
 

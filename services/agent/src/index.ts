@@ -150,6 +150,24 @@ const toolNameMap = new Map<string, string>();
 // Track current content block index to toolUseId mapping for streaming
 const blockIndexToToolId = new Map<number, string>();
 
+// Track current content block index to thinkingId mapping for streaming thinking
+const blockIndexToThinkingId = new Map<number, string>();
+
+// Generate unique thinking IDs
+let thinkingIdCounter = 0;
+function generateThinkingId(): string {
+  return `thinking_${Date.now()}_${++thinkingIdCounter}`;
+}
+
+// Track current content block index to thinkingId mapping for streaming thinking
+const blockIndexToThinkingId = new Map<number, string>();
+
+// Generate unique thinking IDs
+let thinkingIdCounter = 0;
+function generateThinkingId(): string {
+  return `thinking_${Date.now()}_${++thinkingIdCounter}`;
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://localhost:${port}`);
   console.log(`[agent] ${req.method} ${url.pathname}`);
@@ -227,6 +245,20 @@ const server = createServer(async (req, res) => {
                 if (block.type === "text") {
                   console.log(`[agent] Text block: ${block.text.slice(0, 100)}...`);
                   send({ type: "agent.message", content: block.text, partial: false });
+                } else if (block.type === "thinking") {
+                  // Complete thinking block (extended thinking)
+                  const thinkingBlock = block as { type: "thinking"; thinking: string };
+                  console.log(`[agent] Thinking block: ${thinkingBlock.thinking.slice(0, 100)}...`);
+                  send({
+                    type: "agent.event",
+                    event: {
+                      kind: "thinking",
+                      thinkingId: generateThinkingId(),
+                      content: thinkingBlock.thinking,
+                      partial: false,
+                      timestamp: new Date().toISOString(),
+                    },
+                  });
                 } else if (block.type === "tool_use") {
                   console.log(`[agent] Tool use: ${block.name} (id=${block.id})`);
                   // Always store the tool name for later lookup in tool_result
@@ -290,6 +322,11 @@ const server = createServer(async (req, res) => {
                     timestamp: new Date().toISOString(),
                   },
                 });
+              } else if (contentBlock?.type === "thinking") {
+                // Start of a thinking block - generate ID and track it
+                const thinkingId = generateThinkingId();
+                blockIndexToThinkingId.set(message.event.index, thinkingId);
+                console.log(`[agent] Thinking block started: ${thinkingId}`);
               }
             } else if (message.event.type === "content_block_delta") {
               const delta = message.event.delta;
@@ -310,10 +347,27 @@ const server = createServer(async (req, res) => {
                     },
                   });
                 }
+              } else if (delta && "thinking" in delta) {
+                // Thinking content streaming (extended thinking)
+                const thinkingDelta = delta as { type: "thinking_delta"; thinking: string };
+                const thinkingId = blockIndexToThinkingId.get(message.event.index);
+                if (thinkingId) {
+                  send({
+                    type: "agent.event",
+                    event: {
+                      kind: "thinking",
+                      thinkingId,
+                      content: thinkingDelta.thinking,
+                      partial: true,
+                      timestamp: new Date().toISOString(),
+                    },
+                  });
+                }
               }
             } else if (message.event.type === "content_block_stop") {
-              // Clean up block index mapping
+              // Clean up block index mappings
               blockIndexToToolId.delete(message.event.index);
+              blockIndexToThinkingId.delete(message.event.index);
             }
             break;
         }

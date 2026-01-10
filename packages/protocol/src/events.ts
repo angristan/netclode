@@ -59,7 +59,9 @@ export interface CommandEndEvent extends BaseAgentEvent {
 
 export interface ThinkingEvent extends BaseAgentEvent {
   kind: "thinking";
+  thinkingId: string; // Correlate streaming updates for same thinking block
   content: string;
+  partial: boolean; // true = streaming delta, false = complete block
 }
 
 export interface PortExposedEvent extends BaseAgentEvent {

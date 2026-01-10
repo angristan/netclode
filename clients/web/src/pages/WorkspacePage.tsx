@@ -85,7 +85,34 @@ export function WorkspacePage() {
         case "agent.event":
           if (msg.sessionId === id) {
             updateCursor(msg.id);
-            setEvents((prev) => [...prev, msg.event]);
+            const event = msg.event;
+            
+            // Handle streaming thinking events - accumulate content by thinkingId
+            if (event.kind === "thinking" && event.thinkingId && event.partial) {
+              setEvents((prev) => {
+                const existingIndex = prev.findIndex(
+                  (e) => e.kind === "thinking" && e.thinkingId === event.thinkingId
+                );
+                if (existingIndex >= 0) {
+                  // Append to existing thinking event
+                  const updated = [...prev];
+                  const existing = updated[existingIndex];
+                  if (existing.kind === "thinking") {
+                    updated[existingIndex] = {
+                      ...existing,
+                      content: existing.content + event.content,
+                    };
+                  }
+                  return updated;
+                } else {
+                  // New thinking event
+                  return [...prev, event];
+                }
+              });
+            } else {
+              // Non-thinking events or complete thinking blocks
+              setEvents((prev) => [...prev, event]);
+            }
           }
           break;
         case "agent.done":

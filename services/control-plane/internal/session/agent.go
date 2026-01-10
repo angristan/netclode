@@ -287,6 +287,12 @@ func parseAgentEvent(data map[string]interface{}) protocol.AgentEvent {
 	if content, ok := data["content"].(string); ok {
 		event.Content = content
 	}
+	if thinkingID, ok := data["thinkingId"].(string); ok {
+		event.ThinkingID = thinkingID
+	}
+	if partial, ok := data["partial"].(bool); ok {
+		event.Partial = partial
+	}
 
 	// Port detected events
 	if port, ok := data["port"].(float64); ok {

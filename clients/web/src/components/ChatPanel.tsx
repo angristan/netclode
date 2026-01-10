@@ -120,7 +120,22 @@ function EventDetails({ event }: { event: AgentEvent }) {
     case "thinking":
       return (
         <Box p="xs">
-          <Text size="xs" c="dimmed" style={{ whiteSpace: "pre-wrap", fontStyle: "italic" }}>
+          <Group gap="xs" mb={4}>
+            <Text size="xs" fw={500} c="grape">Thinking</Text>
+            {event.partial && (
+              <Loader size={10} color="grape" />
+            )}
+          </Group>
+          <Text 
+            size="xs" 
+            c="dimmed" 
+            style={{ 
+              whiteSpace: "pre-wrap", 
+              fontStyle: "italic",
+              maxHeight: 200,
+              overflow: "auto",
+            }}
+          >
             {event.content}
           </Text>
         </Box>
@@ -248,13 +263,14 @@ function InlineToolEvent({ event }: { event: AgentEvent }) {
       case "file_change": return `${event.action} ${event.path.split("/").pop()}`;
       case "command_start": return `Running command`;
       case "command_end": return `Command ${event.exitCode === 0 ? "completed" : "failed"}`;
-      case "thinking": return "Thinking...";
+      case "thinking": return event.partial ? "Thinking..." : "Thought";
       case "port_exposed": return `Port ${event.port} opened`;
       default: return String((event as { kind: string }).kind);
     }
   };
 
-  const isInProgress = event.kind === "tool_start" || event.kind === "command_start";
+  const isInProgress = event.kind === "tool_start" || event.kind === "command_start" || 
+                       (event.kind === "thinking" && event.partial);
   const isError = (event.kind === "tool_end" && event.error) ||
                   (event.kind === "command_end" && event.exitCode !== 0);
 
