@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.1",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.5",
     "@anthropic-ai/sdk": "^0.71.2",
     "@netclode/protocol": "*",
     "node-pty": "^1.0.0",
