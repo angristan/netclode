@@ -207,3 +207,19 @@ c27f7e4 Fix agent build: use npm for deps, Nix for image
 9afcaca Fix dockerTools config format and nixpkgs version
 5779a6f Add shared Nix store for agent VMs
 ```
+
+---
+
+## Update: NixOS Infrastructure Replaced with Ansible
+
+We've also dropped NixOS for the host itself, replacing `infra/nixos/` with `infra/ansible/`.
+
+### Why
+
+The main reason we used NixOS was to run the nix-daemon for the shared store experiment above. Now that we've dropped Nix for agents, there's no reason to keep NixOS on the host.
+
+Debian + Ansible is just easier. Boring, but it works.
+
+### Migration
+
+New infra is in `infra/ansible/`.

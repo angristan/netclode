@@ -1,0 +1,27 @@
+---
+# nftables role - firewall with persistence
+# Ported from NixOS firewall configuration
+
+- name: Install nftables
+  ansible.builtin.apt:
+    name: nftables
+    state: present
+
+- name: Deploy nftables configuration
+  ansible.builtin.template:
+    src: nftables.conf.j2
+    dest: /etc/nftables.conf
+    mode: "0644"
+    owner: root
+    group: root
+  notify: Reload nftables
+
+- name: Enable nftables service
+  ansible.builtin.systemd:
+    name: nftables
+    enabled: yes
+    state: started
+
+- name: Flush existing rules and load new config
+  ansible.builtin.command: nft -f /etc/nftables.conf
+  changed_when: false

@@ -1,0 +1,115 @@
+---
+# k3s role - single-node Kubernetes server
+# Ported from NixOS modules/k3s.nix
+
+- name: Check if k3s is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+
+- name: Download k3s installer
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/k3s-install.sh
+    mode: "0755"
+  when: not k3s_binary.stat.exists
+
+- name: Install k3s
+  ansible.builtin.shell: |
+    INSTALL_K3S_EXEC="{{ k3s_extra_flags | join(' ') }}" \
+    {% if k3s_version %}INSTALL_K3S_VERSION="{{ k3s_version }}"{% endif %} \
+    /tmp/k3s-install.sh
+  args:
+    creates: /usr/local/bin/k3s
+  environment:
+    INSTALL_K3S_SKIP_START: "true"
+
+- name: Create containerd config directory
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/agent/etc/containerd
+    state: directory
+    mode: "0755"
+
+- name: Deploy containerd config template (for Kata runtime)
+  ansible.builtin.template:
+    src: containerd-config.toml.tmpl.j2
+    dest: /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
+    mode: "0644"
+  notify: Restart k3s
+
+- name: Create k3s service override directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/k3s.service.d
+    state: directory
+    mode: "0755"
+
+- name: Deploy k3s service override for Kata devices
+  ansible.builtin.template:
+    src: k3s-override.conf.j2
+    dest: /etc/systemd/system/k3s.service.d/kata.conf
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart k3s
+
+- name: Enable and start k3s
+  ansible.builtin.systemd:
+    name: k3s
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Wait for k3s API to be ready
+  ansible.builtin.wait_for:
+    port: 6443
+    host: 127.0.0.1
+    timeout: 120
+
+- name: Wait for k3s node to be ready
+  ansible.builtin.shell: |
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    kubectl wait --for=condition=Ready node --all --timeout=120s
+  register: k3s_node_ready
+  retries: 5
+  delay: 10
+  until: k3s_node_ready.rc == 0
+  changed_when: false
+
+- name: Install kubectl (standalone)
+  ansible.builtin.apt:
+    name: kubectl
+    state: absent  # k3s provides kubectl
+  ignore_errors: yes
+
+- name: Create kubectl symlink
+  ansible.builtin.file:
+    src: /usr/local/bin/k3s
+    dest: /usr/local/bin/kubectl
+    state: link
+    force: yes
+
+- name: Download k9s
+  ansible.builtin.get_url:
+    url: https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_amd64.tar.gz
+    dest: /tmp/k9s.tar.gz
+    mode: "0644"
+
+- name: Extract k9s
+  ansible.builtin.unarchive:
+    src: /tmp/k9s.tar.gz
+    dest: /usr/local/bin
+    remote_src: yes
+    extra_opts:
+      - k9s
+
+- name: Make k9s executable
+  ansible.builtin.file:
+    path: /usr/local/bin/k9s
+    mode: "0755"
+
+- name: Set KUBECONFIG in profile
+  ansible.builtin.lineinfile:
+    path: /etc/profile.d/k3s.sh
+    line: 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml'
+    create: yes
+    mode: "0644"

@@ -1,0 +1,147 @@
+---
+# Secrets role - Deploy secrets to host and Kubernetes
+# Reads from ENV_FILE environment variable pointing to .env file
+
+- name: Check if ENV_FILE is set
+  ansible.builtin.set_fact:
+    env_file: "{{ lookup('env', 'ENV_FILE') }}"
+
+- name: Skip secrets if ENV_FILE not set
+  ansible.builtin.debug:
+    msg: "ENV_FILE not set, skipping secrets deployment. Set ENV_FILE=/path/to/.env to deploy secrets."
+  when: env_file | length == 0
+
+- name: Read and parse .env file
+  when: env_file | length > 0
+  block:
+    - name: Read .env file
+      ansible.builtin.slurp:
+        src: "{{ env_file }}"
+      delegate_to: localhost
+      become: no
+      register: env_content
+
+    - name: Extract secrets from .env
+      ansible.builtin.set_fact:
+        ssh_keys: "{{ env_content.content | b64decode | regex_search('(?m)^SSH_AUTHORIZED_KEYS=(.*)$', '\\1') | first | default('') }}"
+        ts_oauth_client_id: "{{ env_content.content | b64decode | regex_search('(?m)^TS_OAUTH_CLIENT_ID=(.*)$', '\\1') | first | default('') }}"
+        ts_oauth_client_secret: "{{ env_content.content | b64decode | regex_search('(?m)^TS_OAUTH_CLIENT_SECRET=(.*)$', '\\1') | first | default('') }}"
+        tailscale_authkey: "{{ env_content.content | b64decode | regex_search('(?m)^TAILSCALE_AUTHKEY=(.*)$', '\\1') | first | default('') }}"
+        anthropic_api_key: "{{ env_content.content | b64decode | regex_search('(?m)^ANTHROPIC_API_KEY=(.*)$', '\\1') | first | default('') }}"
+        do_spaces_access_key: "{{ env_content.content | b64decode | regex_search('(?m)^DO_SPACES_ACCESS_KEY=(.*)$', '\\1') | first | default('') }}"
+        do_spaces_secret_key: "{{ env_content.content | b64decode | regex_search('(?m)^DO_SPACES_SECRET_KEY=(.*)$', '\\1') | first | default('') }}"
+        juicefs_bucket: "{{ env_content.content | b64decode | regex_search('(?m)^JUICEFS_BUCKET=(.*)$', '\\1') | first | default('') }}"
+        juicefs_meta_url: "{{ env_content.content | b64decode | regex_search('(?m)^JUICEFS_META_URL=(.*)$', '\\1') | first | default('') }}"
+
+# Host secrets - skip if only deploying k8s secrets
+- name: Deploy host secrets
+  when:
+    - env_file | length > 0
+    - not (deploy_k8s_secrets | default(false))
+  block:
+    - name: Create /var/secrets directory
+      ansible.builtin.file:
+        path: /var/secrets
+        state: directory
+        mode: "0700"
+        owner: root
+        group: root
+
+    - name: Deploy SSH authorized keys
+      ansible.builtin.copy:
+        content: "{{ ssh_keys }}"
+        dest: /var/secrets/ssh-authorized-keys
+        mode: "0600"
+        owner: root
+        group: root
+      when: ssh_keys | length > 0
+
+    - name: Deploy Tailscale OAuth client ID
+      ansible.builtin.copy:
+        content: "{{ ts_oauth_client_id }}"
+        dest: /var/secrets/ts-oauth-client-id
+        mode: "0600"
+        owner: root
+        group: root
+      when: ts_oauth_client_id | length > 0
+
+    - name: Deploy Tailscale OAuth client secret
+      ansible.builtin.copy:
+        content: "{{ ts_oauth_client_secret }}"
+        dest: /var/secrets/ts-oauth-client-secret
+        mode: "0600"
+        owner: root
+        group: root
+      when: ts_oauth_client_secret | length > 0
+
+    - name: Deploy Tailscale auth key
+      ansible.builtin.copy:
+        content: "{{ tailscale_authkey }}"
+        dest: /var/secrets/tailscale-authkey
+        mode: "0600"
+        owner: root
+        group: root
+      when: tailscale_authkey | length > 0
+
+# K8s secrets - only after namespace exists
+- name: Deploy Kubernetes secrets
+  when:
+    - env_file | length > 0
+    - deploy_k8s_secrets | default(false)
+  block:
+    - name: Create netclode-secrets Kubernetes secret
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: "{{ k3s_kubeconfig }}"
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: netclode-secrets
+            namespace: netclode
+          type: Opaque
+          stringData:
+            anthropic-api-key: "{{ anthropic_api_key }}"
+      when: anthropic_api_key | length > 0
+
+    - name: Check if juicefs-secret already exists
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        name: juicefs-secret
+        namespace: netclode
+        kubeconfig: "{{ k3s_kubeconfig }}"
+      register: existing_juicefs_secret
+
+    - name: Generate JuiceFS volume name with random suffix
+      ansible.builtin.set_fact:
+        juicefs_volume_name: "netclode-{{ lookup('password', '/dev/null chars=ascii_lowercase,digits length=6') }}"
+      when:
+        - existing_juicefs_secret.resources | length == 0
+        - do_spaces_access_key | length > 0
+
+    - name: Use existing JuiceFS volume name
+      ansible.builtin.set_fact:
+        juicefs_volume_name: "{{ (existing_juicefs_secret.resources[0].data.name | b64decode) }}"
+      when:
+        - existing_juicefs_secret.resources | length > 0
+
+    - name: Create juicefs-secret Kubernetes secret
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: "{{ k3s_kubeconfig }}"
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: juicefs-secret
+            namespace: netclode
+          type: Opaque
+          stringData:
+            name: "{{ juicefs_volume_name }}"
+            metaurl: "{{ juicefs_meta_url }}"
+            storage: s3
+            bucket: "{{ juicefs_bucket }}"
+            access-key: "{{ do_spaces_access_key }}"
+            secret-key: "{{ do_spaces_secret_key }}"
+      when: do_spaces_access_key | length > 0

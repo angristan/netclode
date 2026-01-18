@@ -1,0 +1,78 @@
+---
+# Netclode Ansible Configuration
+# ================================
+
+# System
+timezone: UTC
+locale: en_US.UTF-8
+netclode_hostname: netclode-host
+
+# SSH authorized keys for root (loaded from /var/secrets/ssh-authorized-keys)
+# Deploy via: ansible-playbook playbooks/secrets.yaml
+# Set SSH_AUTHORIZED_KEYS in .env file
+
+# Packages
+common_packages:
+  - curl
+  - wget
+  - git
+  - htop
+  - vim
+  - jq
+  - tmux
+  - ncdu
+  - gnupg
+  - apt-transport-https
+  - ca-certificates
+  - python3-pip
+  - python3-kubernetes
+
+# Kernel modules for virtualization
+kernel_modules:
+  - kvm_intel
+  - kvm_amd
+  - vhost_net
+  - vhost_vsock
+  - tun
+  - tap
+
+# Directories to create
+system_directories:
+  - path: /var/lib/netclode
+    mode: "0750"
+  - path: /var/secrets
+    mode: "0700"
+  - path: /opt/netclode
+    mode: "0755"
+
+# Network
+external_interface: eth0
+pod_network: 10.42.0.0/16
+service_network: 10.43.0.0/16
+cni_interface: cni0
+
+# Firewall ports
+firewall_tcp_ports:
+  - 22  # SSH
+
+firewall_tailscale_tcp_ports:
+  - 6443  # k3s API
+
+# k3s
+k3s_version: ""  # Empty means latest stable
+k3s_kubeconfig: /etc/rancher/k3s/k3s.yaml
+k3s_extra_flags:
+  - "--disable=traefik"
+  - "--disable=servicelb"
+  - "--flannel-backend=host-gw"
+  - "--tls-san={{ netclode_hostname }}"
+
+# Kata Containers
+kata_version: "3.24.0"
+kata_dir: /opt/kata
+
+# JuiceFS CSI (Redis runs in k8s, not on host)
+juicefs_csi_version: "v0.31.0"
+
+# Tailscale
+tailscale_port: 41641

@@ -1,0 +1,4 @@
+---
+# Kata Containers defaults
+kata_version: "3.24.0"
+kata_dir: /opt/kata

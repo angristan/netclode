@@ -60,7 +60,7 @@ metadata:
   namespace: netclode
   annotations:
     tailscale.com/expose: "true"
-    tailscale.com/hostname: "netclode"
+    tailscale.com/hostname: "netclode-control-plane"
   labels:
     app: control-plane
 spec:

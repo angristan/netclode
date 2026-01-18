@@ -1,0 +1,14 @@
+---
+# Deploy only k8s manifests (useful for updates)
+#
+# Usage:
+#   ansible-playbook playbooks/k8s-only.yaml
+
+- name: Deploy k8s manifests
+  hosts: all
+  become: yes
+  gather_facts: no
+
+  roles:
+    - role: k8s-manifests
+      tags: [k8s-manifests, workloads]

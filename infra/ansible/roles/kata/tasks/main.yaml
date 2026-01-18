@@ -1,0 +1,76 @@
+---
+# Kata Containers role - Cloud Hypervisor runtime
+# Ported from Kata installation in NixOS modules/k3s.nix
+
+- name: Check if Kata is installed
+  ansible.builtin.stat:
+    path: "{{ kata_dir }}/bin/kata-runtime"
+  register: kata_binary
+
+- name: Check installed Kata version
+  ansible.builtin.slurp:
+    src: "{{ kata_dir }}/.version"
+  register: kata_installed_version
+  when: kata_binary.stat.exists
+  failed_when: false
+
+- name: Set kata_needs_install fact
+  ansible.builtin.set_fact:
+    kata_needs_install: "{{ not kata_binary.stat.exists or (kata_installed_version.content | default('') | b64decode | trim) != kata_version }}"
+
+- name: Install zstd for decompression
+  ansible.builtin.apt:
+    name: zstd
+    state: present
+  when: kata_needs_install
+
+- name: Download Kata static release
+  ansible.builtin.get_url:
+    url: "https://github.com/kata-containers/kata-containers/releases/download/{{ kata_version }}/kata-static-{{ kata_version }}-amd64.tar.zst"
+    dest: /tmp/kata-static.tar.zst
+    mode: "0644"
+  when: kata_needs_install
+
+- name: Extract Kata static release
+  ansible.builtin.shell: |
+    zstd -d -c /tmp/kata-static.tar.zst | tar -xf - -C /
+  when: kata_needs_install
+
+- name: Write Kata version file
+  ansible.builtin.copy:
+    content: "{{ kata_version }}"
+    dest: "{{ kata_dir }}/.version"
+    mode: "0644"
+  when: kata_needs_install
+
+- name: Create /usr/local/bin directory
+  ansible.builtin.file:
+    path: /usr/local/bin
+    state: directory
+    mode: "0755"
+
+- name: Create Kata shim symlinks in /usr/local/bin
+  ansible.builtin.file:
+    src: "{{ kata_dir }}/bin/containerd-shim-kata-v2"
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+    force: yes
+  loop:
+    - containerd-shim-kata-v2
+    - containerd-shim-kata-clh-v2
+
+- name: Create Kata shim symlinks in k3s bin directories
+  ansible.builtin.shell: |
+    for k3s_bin in /var/lib/rancher/k3s/data/*/bin; do
+      if [ -d "$k3s_bin" ]; then
+        ln -sf {{ kata_dir }}/bin/containerd-shim-kata-v2 "$k3s_bin/containerd-shim-kata-v2"
+        ln -sf {{ kata_dir }}/bin/containerd-shim-kata-v2 "$k3s_bin/containerd-shim-kata-clh-v2"
+      fi
+    done
+  changed_when: false
+
+- name: Clean up downloaded archive
+  ansible.builtin.file:
+    path: /tmp/kata-static.tar.zst
+    state: absent
+  when: kata_needs_install

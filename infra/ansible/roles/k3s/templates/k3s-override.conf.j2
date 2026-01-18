@@ -1,0 +1,19 @@
+# k3s service override for Kata Containers
+# Managed by Ansible - do not edit manually
+
+[Service]
+# Device access for Kata VMs and kubelet
+DeviceAllow=/dev/kvm rwm
+DeviceAllow=/dev/vhost-vsock rwm
+DeviceAllow=/dev/vhost-net rwm
+DeviceAllow=/dev/net/tun rwm
+DeviceAllow=/dev/kmsg r
+
+# Enable delegation for cgroups
+Delegate=yes
+
+# Allow access to kernel logs (kubelet needs this)
+ProtectKernelLogs=false
+
+# Add Kata static release binaries to PATH
+Environment="PATH={{ kata_dir }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"

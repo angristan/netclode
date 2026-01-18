@@ -1,0 +1,3 @@
+---
+# JuiceFS CSI defaults
+juicefs_csi_version: "v0.31.0"

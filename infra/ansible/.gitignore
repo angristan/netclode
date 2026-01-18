@@ -1,0 +1,11 @@
+# Ansible cache
+.ansible_cache/
+
+# Temporary files
+*.retry
+*.pyc
+__pycache__/
+
+# Local overrides
+*.local.yaml
+*.local.yml

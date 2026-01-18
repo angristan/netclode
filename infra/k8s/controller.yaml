@@ -69,4 +69,7 @@ spec:
       serviceAccountName: agent-sandbox-controller
       containers:
       - name: agent-sandbox-controller
-        image: registry.k8s.io/agent-sandbox/agent-sandbox-controller:v0.1.0
+        # Using fork until upstream merges PVC support:
+        # https://github.com/kubernetes-sigs/agent-sandbox/pull/240
+        image: ghcr.io/angristan/agent-sandbox-controller:volumeclaim-v7
+        imagePullPolicy: Always

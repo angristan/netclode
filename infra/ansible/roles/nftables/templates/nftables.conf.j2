@@ -1,0 +1,69 @@
+#!/usr/sbin/nft -f
+# Netclode firewall configuration
+# Managed by Ansible - do not edit manually
+
+flush ruleset
+
+table inet filter {
+    chain input {
+        type filter hook input priority 0; policy drop;
+
+        # Allow established connections
+        ct state established,related accept
+
+        # Allow loopback
+        iifname "lo" accept
+
+        # Allow ICMP
+        ip protocol icmp accept
+        ip6 nexthdr icmpv6 accept
+
+        # Allow SSH
+        tcp dport 22 accept
+
+        # Trust k3s CNI interface
+        iifname "{{ cni_interface }}" accept
+
+        # Trust Tailscale interface
+        iifname "tailscale0" accept
+
+        # Allow Tailscale UDP
+        udp dport {{ tailscale_port }} accept
+
+        # Log and drop everything else
+        # counter log prefix "nftables drop: " drop
+        drop
+    }
+
+    chain forward {
+        type filter hook forward priority 0; policy accept;
+
+        # Allow established connections
+        ct state established,related accept
+
+        # Allow k3s pod and service network traffic
+        iifname "{{ cni_interface }}" ip daddr { {{ pod_network }}, {{ service_network }} } accept
+
+        # Allow pods to reach the host (for API server)
+        iifname "{{ cni_interface }}" oifname "lo" accept
+
+        # Allow pods to access internet
+        iifname "{{ cni_interface }}" accept
+
+        # Allow forwarding from Tailscale
+        iifname "tailscale0" accept
+    }
+
+    chain output {
+        type filter hook output priority 0; policy accept;
+    }
+}
+
+table ip nat {
+    chain postrouting {
+        type nat hook postrouting priority 100; policy accept;
+
+        # NAT for k3s pods to access internet
+        oifname "{{ external_interface }}" ip saddr {{ pod_network }} masquerade
+    }
+}

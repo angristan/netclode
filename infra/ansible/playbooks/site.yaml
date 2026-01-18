@@ -1,0 +1,83 @@
+---
+# Main playbook for Netclode infrastructure
+# Deploys everything from base system to k8s workloads
+#
+# Usage:
+#   ansible-playbook playbooks/site.yaml
+#   ansible-playbook playbooks/site.yaml --tags "common,nftables"
+#   ansible-playbook playbooks/site.yaml --skip-tags "k8s-manifests"
+
+- name: Deploy Netclode infrastructure
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars_files:
+    - ../group_vars/all.yaml
+
+  pre_tasks:
+    - name: Verify target is Debian-based
+      ansible.builtin.assert:
+        that:
+          - ansible_os_family == "Debian"
+        fail_msg: "This playbook only supports Ubuntu and Debian"
+
+    - name: Display target info
+      ansible.builtin.debug:
+        msg: |
+          Deploying to: {{ inventory_hostname }}
+          Distribution: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Kernel: {{ ansible_kernel }}
+
+  roles:
+    # Base system
+    - role: common
+      tags: [common, base]
+
+    - role: nftables
+      tags: [nftables, firewall, base]
+
+    # Host secrets (before tailscale needs authkey)
+    - role: deploy-secrets
+      tags: [secrets, base]
+      vars:
+        deploy_k8s_secrets: false
+
+    - role: tailscale
+      tags: [tailscale, network]
+
+    # Kubernetes
+    - role: kata
+      tags: [kata, k8s]
+
+    - role: k3s
+      tags: [k3s, k8s]
+
+    # k8s addons (require k3s)
+    - role: juicefs-csi
+      tags: [juicefs-csi, k8s, addons]
+
+    - role: tailscale-operator
+      tags: [tailscale-operator, k8s, addons]
+
+    # Workloads (creates namespace)
+    - role: k8s-manifests
+      tags: [k8s-manifests, workloads]
+
+    # K8s secrets (after namespace exists)
+    - role: deploy-secrets
+      tags: [secrets, k8s-secrets]
+      vars:
+        deploy_k8s_secrets: true
+
+  post_tasks:
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg: |
+          Netclode infrastructure deployed successfully!
+          
+          Next steps:
+          1. Verify Tailscale connection: tailscale status
+          2. Check k3s status: kubectl get nodes
+          3. Check pods: kubectl -n netclode get pods
+          
+          If Tailscale is not connected, run: tailscale up --ssh

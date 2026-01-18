@@ -1,0 +1,24 @@
+# containerd config template for k3s with Kata runtime
+# Managed by Ansible - do not edit manually
+
+version = 2
+
+[plugins."io.containerd.grpc.v1.cri"]
+  [plugins."io.containerd.grpc.v1.cri".cni]
+{% raw %}
+    bin_dir = "{{ .NodeConfig.AgentConfig.CNIBinDir }}"
+    conf_dir = "{{ .NodeConfig.AgentConfig.CNIConfDir }}"
+{% endraw %}
+
+  [plugins."io.containerd.grpc.v1.cri".containerd]
+    default_runtime_name = "runc"
+
+    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+      runtime_type = "io.containerd.runc.v2"
+
+    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata-clh]
+      runtime_type = "io.containerd.kata-clh.v2"
+      privileged_without_host_devices = true
+      pod_annotations = ["io.katacontainers.*"]
+      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata-clh.options]
+        ConfigPath = "{{ kata_dir }}/share/defaults/kata-containers/configuration-clh.toml"

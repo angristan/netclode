@@ -1,0 +1,32 @@
+---
+# JuiceFS CSI Driver role
+# Ported from NixOS modules/juicefs-csi.nix
+
+- name: Check if JuiceFS CSI is deployed
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: StatefulSet
+    name: juicefs-csi-controller
+    namespace: kube-system
+    kubeconfig: "{{ k3s_kubeconfig }}"
+  register: juicefs_csi_sts
+  failed_when: false
+
+- name: Deploy JuiceFS CSI driver
+  kubernetes.core.k8s:
+    state: present
+    src: "https://raw.githubusercontent.com/juicedata/juicefs-csi-driver/{{ juicefs_csi_version }}/deploy/k8s.yaml"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+  when: juicefs_csi_sts.resources | default([]) | length == 0
+
+- name: Wait for JuiceFS CSI controller to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: StatefulSet
+    name: juicefs-csi-controller
+    namespace: kube-system
+    kubeconfig: "{{ k3s_kubeconfig }}"
+  register: juicefs_csi_status
+  until: (juicefs_csi_status.resources[0].status.readyReplicas | default(0)) >= 1
+  retries: 30
+  delay: 10

@@ -1,0 +1,108 @@
+---
+# Common role - base system setup
+# Supports: Ubuntu 22.04, Ubuntu 24.04, Debian 12
+
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ netclode_hostname }}"
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ timezone }}"
+
+- name: Generate locale
+  community.general.locale_gen:
+    name: "{{ locale }}"
+    state: present
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install common packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+
+- name: Install Node.js repository (Ubuntu/Debian)
+  ansible.builtin.shell: |
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+  args:
+    creates: /etc/apt/sources.list.d/nodesource.list
+  register: nodejs_repo
+
+- name: Install Node.js
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+    update_cache: "{{ nodejs_repo.changed }}"
+
+- name: Create system directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+    owner: root
+    group: root
+  loop: "{{ system_directories }}"
+
+- name: Configure SSH - disable password auth
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?PasswordAuthentication"
+    line: "PasswordAuthentication no"
+  notify: Restart sshd
+
+- name: Configure SSH - permit root login with key
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?PermitRootLogin"
+    line: "PermitRootLogin prohibit-password"
+  notify: Restart sshd
+
+- name: Check for SSH authorized keys file
+  ansible.builtin.stat:
+    path: /var/secrets/ssh-authorized-keys
+  register: ssh_keys_file
+
+- name: Read SSH authorized keys from secrets
+  ansible.builtin.slurp:
+    src: /var/secrets/ssh-authorized-keys
+  register: ssh_keys_content
+  when: ssh_keys_file.stat.exists
+
+- name: Set authorized keys for root
+  ansible.posix.authorized_key:
+    user: root
+    key: "{{ ssh_keys_content.content | b64decode }}"
+    state: present
+  when: ssh_keys_file.stat.exists and (ssh_keys_content.content | b64decode | trim | length > 0)
+
+- name: Load kernel modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ kernel_modules }}"
+  ignore_errors: yes  # Some modules may not exist on all hardware (e.g., kvm_intel on AMD)
+
+- name: Persist kernel modules
+  ansible.builtin.lineinfile:
+    path: /etc/modules-load.d/netclode.conf
+    line: "{{ item }}"
+    create: yes
+    mode: "0644"
+  loop: "{{ kernel_modules }}"
+
+- name: Set sysctl for IP forwarding
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_set: yes
+    state: present
+    reload: yes
+  loop:
+    - { name: "net.ipv4.ip_forward", value: "1" }
+    - { name: "net.bridge.bridge-nf-call-iptables", value: "1" }
+    - { name: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+  ignore_errors: yes  # bridge module may not be loaded yet

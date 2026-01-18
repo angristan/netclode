@@ -1,0 +1,81 @@
+---
+# Tailscale role - daemon with auto-connect
+# Ported from NixOS modules/tailscale.nix
+
+- name: Download Tailscale GPG key
+  ansible.builtin.get_url:
+    url: https://pkgs.tailscale.com/stable/{{ ansible_facts['distribution'] | lower }}/{{ ansible_facts['distribution_release'] }}.noarmor.gpg
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    mode: "0644"
+
+- name: Add Tailscale repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/{{ ansible_facts['distribution'] | lower }} {{ ansible_facts['distribution_release'] }} main"
+    state: present
+    filename: tailscale
+
+- name: Install Tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: yes
+
+- name: Enable and start tailscaled
+  ansible.builtin.systemd:
+    name: tailscaled
+    enabled: yes
+    state: started
+
+- name: Check Tailscale status
+  ansible.builtin.command: tailscale status --json
+  register: tailscale_status
+  changed_when: false
+  failed_when: false
+
+- name: Parse Tailscale status
+  ansible.builtin.set_fact:
+    tailscale_connected: "{{ (tailscale_status.stdout | from_json).BackendState | default('NoState') == 'Running' }}"
+  when: tailscale_status.rc == 0
+
+- name: Set tailscale_connected to false if status failed
+  ansible.builtin.set_fact:
+    tailscale_connected: false
+  when: tailscale_status.rc != 0
+
+- name: Check for auth key file
+  ansible.builtin.stat:
+    path: /var/secrets/tailscale-authkey
+  register: tailscale_authkey_file
+
+- name: Connect Tailscale with auth key
+  ansible.builtin.shell: |
+    authkey=$(cat /var/secrets/tailscale-authkey)
+    tailscale up --auth-key="$authkey" --ssh --hostname={{ netclode_hostname }}
+    rm -f /var/secrets/tailscale-authkey
+  when:
+    - not tailscale_connected
+    - tailscale_authkey_file.stat.exists
+
+- name: Get current Tailscale hostname
+  ansible.builtin.set_fact:
+    current_ts_hostname: "{{ (tailscale_status.stdout | from_json).Self.HostName | default('') }}"
+  when:
+    - tailscale_connected
+    - tailscale_status.rc == 0
+
+- name: Update Tailscale hostname if different
+  ansible.builtin.command: tailscale set --hostname={{ netclode_hostname }}
+  when:
+    - tailscale_connected
+    - current_ts_hostname is defined
+    - current_ts_hostname != netclode_hostname
+
+- name: Display manual auth instructions
+  ansible.builtin.debug:
+    msg: |
+      Tailscale is not connected and no auth key found.
+      To authenticate manually, run: tailscale up --ssh --hostname={{ netclode_hostname }}
+      Or place an auth key at /var/secrets/tailscale-authkey
+  when:
+    - not tailscale_connected
+    - not tailscale_authkey_file.stat.exists

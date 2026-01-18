@@ -1,0 +1,116 @@
+---
+# k8s-manifests role - Deploy all Kubernetes manifests
+# Uses kubernetes.core.k8s module with lookup to read files locally
+
+- name: Set manifest directory path
+  ansible.builtin.set_fact:
+    k8s_manifest_dir: "{{ playbook_dir }}/../../k8s"
+
+- name: Deploy CRDs
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/' ~ item) | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+  loop:
+    - agents.x-k8s.io_sandboxes.yaml
+    - extensions.agents.x-k8s.io_sandboxclaims.yaml
+    - extensions.agents.x-k8s.io_sandboxtemplates.yaml
+    - extensions.agents.x-k8s.io_sandboxwarmpools.yaml
+
+- name: Wait for CRDs to be established
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: "{{ item }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    wait: yes
+    wait_condition:
+      type: Established
+      status: "True"
+    wait_timeout: 60
+  loop:
+    - sandboxes.agents.x-k8s.io
+    - sandboxclaims.extensions.agents.x-k8s.io
+    - sandboxtemplates.extensions.agents.x-k8s.io
+    - sandboxwarmpools.extensions.agents.x-k8s.io
+
+- name: Deploy namespace
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/namespace.yaml') | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
+- name: Deploy RBAC
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/' ~ item) | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+  loop:
+    - rbac.generated.yaml
+    - extensions-rbac.generated.yaml
+    - extensions.yaml
+
+- name: Deploy runtime class
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/runtime-class.yaml') | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
+- name: Deploy storage class
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/storage.yaml') | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
+- name: Deploy JuiceFS config
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/juicefs-config.yaml') | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
+- name: Deploy controllers
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/' ~ item) | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+  loop:
+    - controller.yaml
+    - extensions.controller.yaml
+
+- name: Deploy sandbox template
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/sandbox-template.yaml') | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
+- name: Deploy sandbox warm pool
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/sandbox-warmpool.yaml') | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
+- name: Deploy Redis for JuiceFS
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/redis-juicefs.yaml') | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
+- name: Deploy Redis for sessions
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/redis-sessions.yaml') | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
+- name: Deploy control-plane
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/control-plane.yaml') | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
+- name: Deploy web
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/web.yaml') | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
+# tailscale-operator.yaml is just documentation - actual operator is deployed via Helm in tailscale-operator role

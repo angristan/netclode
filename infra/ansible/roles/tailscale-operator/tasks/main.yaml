@@ -1,0 +1,76 @@
+---
+# Tailscale Operator role - Kubernetes ingress via Tailscale
+# Ported from deploy-tailscale-operator from NixOS modules/tailscale.nix
+
+- name: Check if Helm is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/helm
+  register: helm_binary
+
+- name: Download Helm installer
+  ansible.builtin.get_url:
+    url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    dest: /tmp/get-helm.sh
+    mode: "0755"
+  when: not helm_binary.stat.exists
+
+- name: Install Helm
+  ansible.builtin.command: /tmp/get-helm.sh
+  args:
+    creates: /usr/local/bin/helm
+  environment:
+    HELM_INSTALL_DIR: /usr/local/bin
+
+- name: Check for Tailscale OAuth credentials
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: ts_oauth_files
+  loop:
+    - /var/secrets/ts-oauth-client-id
+    - /var/secrets/ts-oauth-client-secret
+
+- name: Set has_ts_oauth fact
+  ansible.builtin.set_fact:
+    has_ts_oauth: "{{ ts_oauth_files.results | map(attribute='stat.exists') | list | min }}"
+
+- name: Warn if Tailscale OAuth credentials are missing
+  ansible.builtin.debug:
+    msg: |
+      WARNING: Tailscale OAuth credentials not found!
+      Create:
+        /var/secrets/ts-oauth-client-id
+        /var/secrets/ts-oauth-client-secret
+      Get credentials from: https://login.tailscale.com/admin/settings/oauth
+  when: not has_ts_oauth
+
+- name: Add Tailscale Helm repository
+  kubernetes.core.helm_repository:
+    name: tailscale
+    repo_url: https://pkgs.tailscale.com/helmcharts
+  when: has_ts_oauth
+
+- name: Read Tailscale OAuth client ID
+  ansible.builtin.slurp:
+    src: /var/secrets/ts-oauth-client-id
+  register: ts_oauth_client_id
+  when: has_ts_oauth
+
+- name: Read Tailscale OAuth client secret
+  ansible.builtin.slurp:
+    src: /var/secrets/ts-oauth-client-secret
+  register: ts_oauth_client_secret
+  when: has_ts_oauth
+
+- name: Deploy Tailscale Operator
+  kubernetes.core.helm:
+    name: tailscale-operator
+    chart_ref: tailscale/tailscale-operator
+    release_namespace: tailscale
+    create_namespace: true
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    wait: true
+    values:
+      oauth:
+        clientId: "{{ ts_oauth_client_id.content | b64decode | trim }}"
+        clientSecret: "{{ ts_oauth_client_secret.content | b64decode | trim }}"
+  when: has_ts_oauth
