@@ -70,7 +70,7 @@ jobs:
           go build -ldflags="-s -w" -o netclode-${{ matrix.goos }}-${{ matrix.goarch }} .
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: netclode-${{ matrix.goos }}-${{ matrix.goarch }}
           path: clients/cli/netclode-${{ matrix.goos }}-${{ matrix.goarch }}
