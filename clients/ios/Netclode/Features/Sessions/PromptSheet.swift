@@ -283,14 +283,22 @@ struct PromptSheet: View {
             }
             .onAppear {
                 isFocused = true
+                // Restore last selected SDK and model preferences
+                selectedSdkType = settingsStore.lastSelectedSdkType
+                selectedClaudeModelId = settingsStore.lastSelectedClaudeModelId
+                selectedOpenCodeModelId = settingsStore.lastSelectedOpenCodeModelId
+                selectedCopilotModelId = settingsStore.lastSelectedCopilotModelId
+                selectedCodexModelId = settingsStore.lastSelectedCodexModelId
                 // Preload all models on sheet open for smooth SDK switching
                 preloadAllModels()
             }
-            .onChange(of: selectedSdkType) { _, _ in
+            .onChange(of: selectedSdkType) { _, newValue in
                 // Close dropdown and animate the transition
                 withAnimation(.smooth(duration: 0.2)) {
                     showModelDropdown = false
                 }
+                // Persist last selected SDK
+                settingsStore.lastSelectedSdkType = newValue
             }
             .onChange(of: showModelDropdown) { _, isExpanded in
                 // Dismiss keyboard when opening model dropdown
@@ -309,6 +317,18 @@ struct PromptSheet: View {
                 if newValue.isEmpty {
                     repoAccess = .read
                 }
+            }
+            .onChange(of: selectedClaudeModelId) { _, newValue in
+                settingsStore.lastSelectedClaudeModelId = newValue
+            }
+            .onChange(of: selectedOpenCodeModelId) { _, newValue in
+                settingsStore.lastSelectedOpenCodeModelId = newValue
+            }
+            .onChange(of: selectedCopilotModelId) { _, newValue in
+                settingsStore.lastSelectedCopilotModelId = newValue
+            }
+            .onChange(of: selectedCodexModelId) { _, newValue in
+                settingsStore.lastSelectedCodexModelId = newValue
             }
         }
         .presentationDetents([.medium, .large])

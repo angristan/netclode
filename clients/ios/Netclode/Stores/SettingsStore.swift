@@ -36,6 +36,43 @@ final class SettingsStore {
         }
     }
 
+    // MARK: - Last Selected SDK & Model Preferences
+
+    /// Last selected SDK type
+    var lastSelectedSdkType: SdkType {
+        didSet {
+            UserDefaults.standard.set(lastSelectedSdkType.rawValue, forKey: "netclode_last_sdk_type")
+        }
+    }
+
+    /// Last selected model ID for Claude SDK
+    var lastSelectedClaudeModelId: String {
+        didSet {
+            UserDefaults.standard.set(lastSelectedClaudeModelId, forKey: "netclode_last_claude_model")
+        }
+    }
+
+    /// Last selected model ID for OpenCode SDK
+    var lastSelectedOpenCodeModelId: String {
+        didSet {
+            UserDefaults.standard.set(lastSelectedOpenCodeModelId, forKey: "netclode_last_opencode_model")
+        }
+    }
+
+    /// Last selected model ID for Copilot SDK
+    var lastSelectedCopilotModelId: String {
+        didSet {
+            UserDefaults.standard.set(lastSelectedCopilotModelId, forKey: "netclode_last_copilot_model")
+        }
+    }
+
+    /// Last selected model ID for Codex SDK
+    var lastSelectedCodexModelId: String {
+        didSet {
+            UserDefaults.standard.set(lastSelectedCodexModelId, forKey: "netclode_last_codex_model")
+        }
+    }
+
     init() {
         serverURL = UserDefaults.standard.string(forKey: "netclode_server_url") ?? ""
         connectPort = UserDefaults.standard.string(forKey: "netclode_connect_port") ?? ""
@@ -47,5 +84,18 @@ final class SettingsStore {
         }
 
         hapticFeedbackEnabled = UserDefaults.standard.object(forKey: "netclode_haptic_feedback") as? Bool ?? true
+
+        // Load last selected SDK and model preferences
+        if let sdkRawValue = UserDefaults.standard.string(forKey: "netclode_last_sdk_type"),
+           let sdk = SdkType(rawValue: sdkRawValue) {
+            lastSelectedSdkType = sdk
+        } else {
+            lastSelectedSdkType = .claude
+        }
+
+        lastSelectedClaudeModelId = UserDefaults.standard.string(forKey: "netclode_last_claude_model") ?? ModelsStore.defaultModelId
+        lastSelectedOpenCodeModelId = UserDefaults.standard.string(forKey: "netclode_last_opencode_model") ?? ModelsStore.defaultModelId
+        lastSelectedCopilotModelId = UserDefaults.standard.string(forKey: "netclode_last_copilot_model") ?? CopilotStore.defaultModelId
+        lastSelectedCodexModelId = UserDefaults.standard.string(forKey: "netclode_last_codex_model") ?? CodexStore.defaultModelId
     }
 }
