@@ -17,7 +17,7 @@
     "@connectrpc/connect": "^2.1.1",
     "@connectrpc/connect-node": "^2.1.1",
     "@github/copilot-sdk": "^0.1.18",
-    "@openai/codex-sdk": "^0.92.0",
+    "@openai/codex-sdk": "^0.93.0",
     "node-pty": "^1.0.0"
   },
   "devDependencies": {
