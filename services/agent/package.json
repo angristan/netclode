@@ -16,7 +16,7 @@
     "@bufbuild/protobuf": "^2.11.0",
     "@connectrpc/connect": "^2.1.1",
     "@connectrpc/connect-node": "^2.1.1",
-    "@github/copilot-sdk": "^0.1.18",
+    "@github/copilot-sdk": "^0.1.20",
     "@openai/codex-sdk": "^0.93.0",
     "node-pty": "^1.0.0"
   },
