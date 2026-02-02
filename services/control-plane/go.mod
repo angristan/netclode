@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	connectrpc.com/connect v1.19.1
 	github.com/alicebob/miniredis/v2 v2.36.1
-	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/redis/go-redis/v9 v9.17.3
 	golang.org/x/net v0.49.0
