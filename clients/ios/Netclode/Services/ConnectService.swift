@@ -172,17 +172,22 @@ final class ConnectService {
     ///   - serverURL: The base server URL (e.g., "netclode-control-plane" or "http://localhost:3000")
     ///   - connectPort: Optional port override for the Connect protocol. If empty, uses default logic.
     func connect(to serverURL: String, connectPort: String = "") {
-        // Allow connecting from disconnected or suspended states
-        switch connectionState {
-        case .disconnected, .suspended:
-            break
-        default:
-            return
-        }
-        
+        // Always honor explicit user reconnect requests, even while reconnecting.
+        // This lets users recover from a stale/incorrect host without restarting the app.
         self.serverURL = serverURL
         self.connectPortOverride = connectPort
-        
+
+        // Cancel any in-flight reconnect loop before starting a fresh connect attempt.
+        reconnectTask?.cancel()
+
+        // Tear down active state so the next attempt uses the updated target.
+        receiveTask?.cancel()
+        keepAliveTask?.cancel()
+        stream = nil
+        client = nil
+        serviceClient = nil
+        connectionState = .disconnected(reason: .userInitiated)
+
         Task {
             await performConnect()
         }
