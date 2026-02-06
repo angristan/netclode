@@ -1,7 +1,26 @@
 CONTEXT ?= netclode
 NAMESPACE ?= netclode
 
-.PHONY: rollout rollout-control-plane rollout-agent deploy test-ios run-macos run-ios run-device proto proto-lint proto-breaking proto-setup
+TEAM_ID_AUTO ?= $(shell \
+	team=$$(security find-certificate -a -c "Apple Development" -p "$$HOME/Library/Keychains/login.keychain-db" 2>/dev/null | \
+		openssl x509 -noout -subject 2>/dev/null | sed -n 's/.*OU=\([^,]*\).*/\1/p' | head -n 1); \
+	if [ -z "$$team" ]; then \
+		profile=$$(ls -1 "$$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"/*.mobileprovision 2>/dev/null | head -n 1); \
+		if [ -n "$$profile" ]; then \
+			team=$$(security cms -D -i "$$profile" 2>/dev/null | \
+				awk 'found && /<string>/{gsub(/.*<string>|<\/string>.*/, ""); print; exit} /<key>TeamIdentifier<\/key>/{found=1}'); \
+		fi; \
+	fi; \
+	printf "%s" "$$team" \
+)
+TEAM_ID ?= $(TEAM_ID_AUTO)
+
+XCODE_SIGN_ARGS := -allowProvisioningUpdates
+ifneq ($(strip $(TEAM_ID)),)
+XCODE_SIGN_ARGS += DEVELOPMENT_TEAM=$(TEAM_ID)
+endif
+
+.PHONY: rollout rollout-control-plane rollout-agent deploy test-ios run-macos run-ios run-device print-ios-team-id proto proto-lint proto-breaking proto-setup
 
 # Proto generation
 proto: proto-setup ## Generate code from proto files
@@ -54,20 +73,23 @@ test-ios: ## Run iOS unit tests
 	cd clients/ios && xcodebuild test -scheme NetclodeTests -destination 'platform=macOS' -quiet
 
 run-macos: ## Build and run macOS (Catalyst) app
-	cd clients/ios && xcodebuild -scheme Netclode -destination 'platform=macOS,variant=Mac Catalyst' -derivedDataPath .build build
+	cd clients/ios && xcodebuild -scheme Netclode -destination 'platform=macOS,variant=Mac Catalyst' -derivedDataPath .build $(XCODE_SIGN_ARGS) build
 	open clients/ios/.build/Build/Products/Debug-maccatalyst/Netclode.app
 
 SIMULATOR ?= iPhone 16 Pro
 run-ios: ## Build and run iOS simulator app (SIMULATOR="iPhone 16 Pro")
 	xcrun simctl boot "$(SIMULATOR)" 2>/dev/null || true
-	cd clients/ios && xcodebuild -scheme Netclode -destination 'platform=iOS Simulator,name=$(SIMULATOR)' -derivedDataPath .build build
+	cd clients/ios && xcodebuild -scheme Netclode -destination 'platform=iOS Simulator,name=$(SIMULATOR)' -derivedDataPath .build $(XCODE_SIGN_ARGS) build
 	xcrun simctl install "$(SIMULATOR)" clients/ios/.build/Build/Products/Debug-iphonesimulator/Netclode.app
 	xcrun simctl launch "$(SIMULATOR)" com.netclode.ios
 
 run-device: ## Build and run on connected iPhone
-	cd clients/ios && xcodebuild -scheme Netclode -destination 'generic/platform=iOS' -derivedDataPath .build build
+	cd clients/ios && xcodebuild -scheme Netclode -destination 'generic/platform=iOS' -derivedDataPath .build $(XCODE_SIGN_ARGS) -allowProvisioningDeviceRegistration build
 	xcrun devicectl device install app --device "$(shell xcrun devicectl list devices 2>/dev/null | grep iPhone | grep -oE '[0-9A-F-]{36}' | head -1)" clients/ios/.build/Build/Products/Debug-iphoneos/Netclode.app
 	xcrun devicectl device process launch --device "$(shell xcrun devicectl list devices 2>/dev/null | grep iPhone | grep -oE '[0-9A-F-]{36}' | head -1)" com.netclode.ios
+
+print-ios-team-id: ## Print detected iOS signing Team ID (override with TEAM_ID=...)
+	@echo $(TEAM_ID)
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'

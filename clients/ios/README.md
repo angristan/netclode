@@ -38,6 +38,34 @@ make run-ios SIMULATOR="iPhone 16"
 make run-device
 ```
 
+### Signing setup (required for CLI builds)
+
+`xcodebuild` needs an Apple Developer account and a valid development signing certificate in your keychain.
+
+1. Open Xcode → Settings → Accounts, add your Apple ID, and select a team.
+2. In that team, click **Manage Certificates...** and create/download a development certificate.
+3. Verify certificates are visible to the CLI:
+
+```bash
+security find-identity -v -p codesigning
+```
+
+If you are not using the default project team, pass your team explicitly:
+
+```bash
+make run-macos TEAM_ID=<YOUR_TEAM_ID>
+make run-ios TEAM_ID=<YOUR_TEAM_ID>
+make run-device TEAM_ID=<YOUR_TEAM_ID>
+```
+
+`make` now auto-detects `TEAM_ID` from your local Apple Development certificate (or falls back to your first local provisioning profile) if you do not pass `TEAM_ID`.
+
+Inspect the detected value:
+
+```bash
+make print-ios-team-id
+```
+
 ## Testing
 
 Run unit tests from Xcode (`⌘U`) or via command line:
