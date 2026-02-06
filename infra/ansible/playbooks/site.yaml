@@ -36,6 +36,10 @@
     - role: nftables
       tags: [nftables, firewall, base]
 
+    - role: minio
+      tags: [minio, storage]
+      when: minio_enabled | default(false)
+
     # Host secrets (before tailscale needs authkey)
     - role: deploy-secrets
       tags: [secrets, base]

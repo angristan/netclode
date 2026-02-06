@@ -52,7 +52,9 @@ export DEPLOY_HOST=your-server-ip
 
 ### Secrets
 
-All secrets are read from the `.env` file at the repo root. Required entries:
+All secrets are read from the `.env` file at the repo root.
+
+Required entries:
 
 ```bash
 # .env file
@@ -66,10 +68,17 @@ ANTHROPIC_API_KEY=sk-ant-api03-xxx
 TS_OAUTH_CLIENT_ID=your-oauth-client-id
 TS_OAUTH_CLIENT_SECRET=your-oauth-client-secret
 
-# JuiceFS / S3 storage
+# Option A: external S3-compatible storage (manual)
 DO_SPACES_ACCESS_KEY=your-spaces-access-key
 DO_SPACES_SECRET_KEY=your-spaces-secret-key
 JUICEFS_BUCKET=https://fra1.digitaloceanspaces.com/your-bucket
+
+# Option B: self-host MinIO (automatic)
+# MINIO_ENABLED=true
+# MINIO_BUCKET_NAME=netclode-juicefs
+# MINIO_API_PORT=9000
+
+# JuiceFS metadata (optional - default shown)
 JUICEFS_META_URL=redis://redis-juicefs.netclode.svc.cluster.local:6379/0
 
 # GitHub App (optional - for repo picker)
@@ -97,6 +106,28 @@ This creates:
 **Kubernetes secrets** (in `netclode` namespace):
 - `netclode-secrets` - LLM API keys and optional GitHub App credentials
 - `juicefs-secret` - S3 credentials and JuiceFS metadata URL
+
+### MinIO (Optional)
+
+To run MinIO on the host as self-hosted S3 storage:
+
+```bash
+MINIO_ENABLED=true ansible-playbook playbooks/site.yaml --tags "nftables,minio"
+```
+
+Credential resolution order:
+- `minio_root_user` / `minio_root_password` Ansible vars (if provided)
+- `.env` fallback: `DO_SPACES_ACCESS_KEY` / `DO_SPACES_SECRET_KEY`
+- If neither is set, random credentials are generated and persisted to `/var/secrets/minio-root-user` and `/var/secrets/minio-root-password`
+
+When `MINIO_ENABLED=true`, `deploy-secrets` can auto-wire JuiceFS storage:
+- Reads credentials from `/var/secrets/minio-root-*` if `DO_SPACES_*` are omitted
+- Derives `JUICEFS_BUCKET` from host IP + MinIO port/bucket if `JUICEFS_BUCKET` is omitted
+
+Optional environment overrides:
+- `MINIO_BUCKET_NAME` (default: `netclode-juicefs`)
+- `MINIO_API_PORT` (default: `9000`)
+- `MINIO_CONSOLE_PORT` (default: `9001`)
 
 ## Usage
 
@@ -130,6 +161,9 @@ ansible-playbook playbooks/site.yaml --skip-tags k8s-manifests
 
 # Deploy only k8s manifests (fast updates)
 ansible-playbook playbooks/k8s-only.yaml
+
+# Install/update MinIO only
+MINIO_ENABLED=true ansible-playbook playbooks/site.yaml --tags "nftables,minio"
 ```
 
 ### Local kubectl Access
@@ -160,6 +194,8 @@ kubectl config use-context netclode
 | `common` | Base packages, SSH, directories |
 | `nftables` | Firewall configuration |
 | `secrets` | Deploy secrets (host + k8s) |
+| `minio` | MinIO self-hosted S3 storage |
+| `storage` | Storage stack helpers (currently MinIO) |
 | `tailscale` | Tailscale daemon |
 | `kata` | Kata Containers runtime (use with `secrets` tag to read .env) |
 | `k3s` | k3s Kubernetes server |
@@ -182,6 +218,7 @@ kubectl config use-context netclode
 | `common` | Base system setup (packages, SSH, kernel modules) |
 | `nftables` | Firewall with persistence |
 | `deploy-secrets` | Deploy secrets from .env to host and k8s |
+| `minio` | Install MinIO service and bootstrap JuiceFS bucket |
 | `tailscale` | Tailscale daemon + auto-connect |
 | `kata` | Kata Containers static release |
 | `nvidia` | NVIDIA driver, container toolkit, device plugin (optional) |

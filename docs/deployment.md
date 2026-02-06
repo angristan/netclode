@@ -5,7 +5,9 @@ Here's how to get Netclode running on your own server.
 ## Prerequisites
 
 - Linux machine with nested virtualization (2 vCPU, 8GB RAM minimum)
-- S3-compatible storage (DigitalOcean Spaces, Cloudflare R2, etc.)
+- S3-compatible storage backend:
+  - External provider (DigitalOcean Spaces, Cloudflare R2, etc.), or
+  - Self-hosted MinIO on the same server (optional, can be auto-configured)
 - Tailscale account
 - At least one LLM API key (Anthropic, OpenAI, Mistral, etc.) - see [SDK Support](sdk-support.md)
 - Ansible installed locally
@@ -54,10 +56,17 @@ ANTHROPIC_API_KEY=sk-ant-api03-xxx
 TS_OAUTH_CLIENT_ID=your-oauth-client-id
 TS_OAUTH_CLIENT_SECRET=your-oauth-client-secret
 
-# JuiceFS / S3 storage
+# Option A: external S3-compatible storage (manual)
 DO_SPACES_ACCESS_KEY=your-spaces-access-key
 DO_SPACES_SECRET_KEY=your-spaces-secret-key
 JUICEFS_BUCKET=https://fra1.digitaloceanspaces.com/your-bucket
+
+# Option B: self-host MinIO on the same VPS (automatic)
+# MINIO_ENABLED=true
+# MINIO_BUCKET_NAME=netclode-juicefs
+# MINIO_API_PORT=9000
+
+# JuiceFS metadata (optional - default shown)
 JUICEFS_META_URL=redis://redis-juicefs.netclode.svc.cluster.local:6379/0
 
 # Deployment target (Tailscale hostname from step 3)
@@ -69,7 +78,9 @@ GITHUB_APP_PRIVATE_KEY_B64=base64-encoded-pem-private-key
 GITHUB_INSTALLATION_ID=12345678
 ```
 
-Create a bucket (e.g., `netclode-juicefs`) with read/write credentials.
+Storage notes:
+- If using external S3, create a bucket (e.g., `netclode-juicefs`) with read/write credentials.
+- If `MINIO_ENABLED=true`, MinIO is installed by Ansible and `deploy-secrets` auto-wires JuiceFS credentials/bucket from `/var/secrets/minio-root-*` if `DO_SPACES_*` / `JUICEFS_BUCKET` are omitted.
 
 ## 6. Install Ansible dependencies
 
