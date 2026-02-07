@@ -13,6 +13,8 @@ final class SessionStore {
     var pendingPromptText: String?
     /// Session ID to navigate to and send prompt (after session is created)
     var pendingSessionId: String?
+    /// Error shown when creating a new session fails before a session ID exists.
+    var pendingCreationError: String?
 
     var currentSession: Session? {
         guard let id = currentSessionId else { return nil }
@@ -65,6 +67,7 @@ final class SessionStore {
         lastNotificationIds.removeAll()
         pendingPromptText = nil
         pendingSessionId = nil
+        pendingCreationError = nil
     }
 
     func setCurrentSession(id: String?) {
@@ -93,6 +96,18 @@ final class SessionStore {
 
     func error(for sessionId: String) -> String? {
         errorsBySession[sessionId]
+    }
+
+    // MARK: - New Session Creation State
+
+    func clearPendingCreationError() {
+        pendingCreationError = nil
+    }
+
+    func failPendingCreation(with error: String) {
+        pendingPromptText = nil
+        pendingSessionId = nil
+        pendingCreationError = error
     }
 
     // MARK: - Notification Cursor (for reconnection)

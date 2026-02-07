@@ -550,6 +550,7 @@ struct PromptSheet: View {
         guard !text.isEmpty else { return }
 
         isSubmitting = true
+        sessionStore.clearPendingCreationError()
 
         if settingsStore.hapticFeedbackEnabled {
             HapticFeedback.medium()
