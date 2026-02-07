@@ -741,7 +741,6 @@ struct ExposePortSheet: View {
     let onExpose: (Int) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(SettingsStore.self) private var settingsStore
 
     @FocusState private var isInputFocused: Bool
 
