@@ -51,6 +51,7 @@ import { getGitStatus, getGitDiff, configureGitCredentials, getRepoPath, getRepo
 // Import SDK abstraction layer
 import {
   createSDKAdapter,
+  shutdownAllAdapters,
   type SDKAdapter,
   type PromptEvent,
   type SdkType,
@@ -429,15 +430,13 @@ export async function connectToControlPlane(
     setTerminalOutputCallback(null);
     connection = null;
 
-    // Shutdown SDK adapters
-    if (currentAdapter) {
-      try {
-        await currentAdapter.shutdown();
-      } catch (err) {
-        console.error("[agent] Error shutting down SDK adapter:", err);
-      }
-      currentAdapter = null;
+    // Shutdown and clear cached SDK adapters so reconnect initializes fresh clients.
+    try {
+      await shutdownAllAdapters();
+    } catch (err) {
+      console.error("[agent] Error shutting down SDK adapters:", err);
     }
+    currentAdapter = null;
 
     console.log("[agent] Disconnected from control plane");
   }
