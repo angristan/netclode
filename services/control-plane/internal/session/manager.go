@@ -456,8 +456,23 @@ func (m *Manager) createSandboxDirect(ctx context.Context, sessionID string, rep
 	} else {
 		// Not restoring from snapshot - check if we have an existing PVC (resume after pause)
 		if existingPVC, err := m.storage.GetPVCName(ctx, sessionID); err == nil && existingPVC != "" {
-			slog.Info("Resuming with existing PVC", "sessionID", sessionID, "pvc", existingPVC)
-			env[k8s.ExistingPVCEnvKey] = existingPVC
+			exists, checkErr := m.k8s.PVCExists(ctx, existingPVC)
+			switch {
+			case checkErr != nil:
+				// If we cannot validate, keep previous behavior to avoid unexpected data loss.
+				slog.Warn("Failed to validate stored PVC, attempting resume with stored PVC", "sessionID", sessionID, "pvc", existingPVC, "error", checkErr)
+				env[k8s.ExistingPVCEnvKey] = existingPVC
+			case exists:
+				slog.Info("Resuming with existing PVC", "sessionID", sessionID, "pvc", existingPVC)
+				env[k8s.ExistingPVCEnvKey] = existingPVC
+			default:
+				// Stale Redis state can point to a PVC that no longer exists. Fall back to a fresh PVC
+				// instead of creating an unschedulable pod that stays stuck in resuming forever.
+				slog.Warn("Stored PVC not found, creating sandbox with a new PVC", "sessionID", sessionID, "pvc", existingPVC)
+				if err := m.storage.SetPVCName(ctx, sessionID, ""); err != nil {
+					slog.Warn("Failed to clear stale PVC name from storage", "sessionID", sessionID, "pvc", existingPVC, "error", err)
+				}
+			}
 		}
 	}
 

@@ -513,13 +513,14 @@ func (r *k8sRuntime) buildContainerResources(resources *SandboxResourceConfig) *
 // WaitForReady registers a callback to be called when sandbox becomes ready.
 // Uses informer-based watching instead of polling.
 func (r *k8sRuntime) WaitForReady(ctx context.Context, sessionID string, timeout time.Duration) (string, error) {
-	// Check if already ready from cache
-	r.cacheMu.RLock()
-	sandbox, exists := r.sandboxCache[sessionID]
-	r.cacheMu.RUnlock()
-
-	if exists && sandbox.IsReady() {
-		return r.getServiceFQDN(sandbox), nil
+	// Check the latest sandbox object from the API first.
+	// Relying only on informer cache can return stale readiness after rapid delete/recreate cycles.
+	if status, err := r.GetStatus(ctx, sessionID); err == nil {
+		if status.Exists && status.Ready {
+			return status.ServiceFQDN, nil
+		}
+	} else {
+		slog.Warn("Failed to get fresh sandbox status, falling back to informer wait", "sessionID", sessionID, "error", err)
 	}
 
 	// Setup callback channel
@@ -582,27 +583,50 @@ func (r *k8sRuntime) WatchSandboxReady(sessionID string, callback SandboxReadyCa
 	r.callbacksMu.Unlock()
 }
 
-// GetStatus retrieves the status of a sandbox from cache.
+// GetStatus retrieves the status of a sandbox from the API server.
 func (r *k8sRuntime) GetStatus(ctx context.Context, sessionID string) (*SandboxStatusInfo, error) {
-	r.cacheMu.RLock()
-	sandbox, exists := r.sandboxCache[sessionID]
-	r.cacheMu.RUnlock()
-
-	if !exists {
-		// Try fetching directly
-		name := sandboxName(sessionID)
-		u, err := r.dynamicClient.Resource(SandboxGVR).Namespace(r.namespace).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return &SandboxStatusInfo{Exists: false}, nil
-			}
-			return nil, err
+	list, err := r.dynamicClient.Resource(SandboxGVR).Namespace(r.namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("netclode.io/session=%s", sessionID),
+	})
+	if err != nil {
+		// Fallback to cache only if the API request itself fails.
+		r.cacheMu.RLock()
+		sandbox, exists := r.sandboxCache[sessionID]
+		r.cacheMu.RUnlock()
+		if exists {
+			return &SandboxStatusInfo{
+				Exists:      true,
+				Ready:       sandbox.IsReady(),
+				ServiceFQDN: r.getServiceFQDN(sandbox),
+				Error:       sandbox.GetError(),
+			}, nil
 		}
-		sandbox = r.unstructuredToSandbox(u)
-		if sandbox == nil {
-			return &SandboxStatusInfo{Exists: false}, nil
+		return nil, err
+	}
+
+	if len(list.Items) == 0 {
+		// API confirms no sandbox with this session label exists.
+		return &SandboxStatusInfo{Exists: false}, nil
+	}
+
+	// If multiple objects exist transiently, use the newest one.
+	latest := &list.Items[0]
+	for i := 1; i < len(list.Items); i++ {
+		item := &list.Items[i]
+		if item.GetCreationTimestamp().After(latest.GetCreationTimestamp().Time) {
+			latest = item
 		}
 	}
+
+	sandbox := r.unstructuredToSandbox(latest)
+	if sandbox == nil {
+		return &SandboxStatusInfo{Exists: false}, nil
+	}
+
+	// Refresh cache with the latest object.
+	r.cacheMu.Lock()
+	r.sandboxCache[sessionID] = sandbox
+	r.cacheMu.Unlock()
 
 	return &SandboxStatusInfo{
 		Exists:      true,
@@ -656,6 +680,18 @@ func (r *k8sRuntime) DeletePVC(ctx context.Context, sessionID string) error {
 
 	slog.Info("PVC deleted", "sessionID", sessionID, "name", name)
 	return nil
+}
+
+// PVCExists checks whether a PVC with the given name exists.
+func (r *k8sRuntime) PVCExists(ctx context.Context, name string) (bool, error) {
+	_, err := r.clientset.CoreV1().PersistentVolumeClaims(r.namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // DeletePVCByName deletes a PVC by its exact name.

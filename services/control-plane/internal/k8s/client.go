@@ -59,6 +59,7 @@ type Runtime interface {
 	CreatePVCFromSnapshot(ctx context.Context, sessionID, snapshotID string) (pvcName string, err error)
 	WaitForRestoreJob(ctx context.Context, sessionID, snapshotID string, timeout time.Duration) error
 	GetPVCName(ctx context.Context, sessionID string) (string, error)
+	PVCExists(ctx context.Context, pvcName string) (bool, error)
 
 	// Agent authentication
 	// VerifyAgentToken validates a Kubernetes ServiceAccount token and returns the pod name.

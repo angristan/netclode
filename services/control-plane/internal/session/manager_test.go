@@ -35,6 +35,8 @@ type mockRuntime struct {
 	exposedPorts     map[string]map[int]bool
 	labeledSandboxes map[string]string // sandboxName -> sessionID
 	readyCallbacks   map[string][]k8s.SandboxReadyCallback
+	createSandboxEnv map[string]map[string]string
+	pvcExists        map[string]bool
 	previewHostname  string
 	previewHostErr   error
 }
@@ -45,6 +47,8 @@ func newMockRuntime() *mockRuntime {
 		exposedPorts:     make(map[string]map[int]bool),
 		labeledSandboxes: make(map[string]string),
 		readyCallbacks:   make(map[string][]k8s.SandboxReadyCallback),
+		createSandboxEnv: make(map[string]map[string]string),
+		pvcExists:        make(map[string]bool),
 	}
 }
 
@@ -52,6 +56,11 @@ func (m *mockRuntime) CreateSandbox(ctx context.Context, sessionID string, env m
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.createdSandboxes = append(m.createdSandboxes, sessionID)
+	envCopy := make(map[string]string, len(env))
+	for k, v := range env {
+		envCopy[k] = v
+	}
+	m.createSandboxEnv[sessionID] = envCopy
 	m.sandboxes[sessionID] = &k8s.SandboxStatusInfo{Exists: true, Ready: true, ServiceFQDN: "test.local"}
 	return nil
 }
@@ -235,6 +244,16 @@ func (m *mockRuntime) GetPVCName(ctx context.Context, sessionID string) (string,
 	return "", nil
 }
 
+func (m *mockRuntime) PVCExists(ctx context.Context, pvcName string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	exists, ok := m.pvcExists[pvcName]
+	if !ok {
+		return true, nil
+	}
+	return exists, nil
+}
+
 func (m *mockRuntime) CreatePVCFromSnapshot(ctx context.Context, sessionID, snapshotID string) (string, error) {
 	return "agent-home-sess-" + sessionID, nil
 }
@@ -287,6 +306,7 @@ type mockStorage struct {
 	streams     map[string][]storage.StreamEntryWithID
 	oauth       map[string]*storage.CodexOAuthSessionData
 	oauthGlobal *storage.CodexOAuthSessionData
+	pvcNames    map[string]string
 }
 
 func newMockStorage() *mockStorage {
@@ -294,6 +314,7 @@ func newMockStorage() *mockStorage {
 		sessions: make(map[string]*pb.Session),
 		streams:  make(map[string][]storage.StreamEntryWithID),
 		oauth:    make(map[string]*storage.CodexOAuthSessionData),
+		pvcNames: make(map[string]string),
 	}
 }
 
@@ -565,11 +586,16 @@ func (m *mockStorage) ClearOldPVCName(ctx context.Context, sessionID string) err
 }
 
 func (m *mockStorage) SetPVCName(ctx context.Context, sessionID, pvcName string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pvcNames[sessionID] = pvcName
 	return nil
 }
 
 func (m *mockStorage) GetPVCName(ctx context.Context, sessionID string) (string, error) {
-	return "", nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.pvcNames[sessionID], nil
 }
 
 // Helper to create a test manager with mock dependencies
@@ -595,6 +621,56 @@ func addSession(m *Manager, id string, status pb.SessionStatus, lastActiveAt tim
 		LastActiveAt: timestamppb.New(lastActiveAt),
 	}
 	m.sessions[id] = NewSessionState(session)
+}
+
+func TestCreateSandboxDirect_UsesStoredPVCWhenItExists(t *testing.T) {
+	manager, runtime, store := newTestManager(3)
+	sessionID := "sess-existing-pvc"
+	addSession(manager, sessionID, pb.SessionStatus_SESSION_STATUS_PAUSED, time.Now())
+
+	storedPVC := "agent-home-netclode-agent-pool-abc123"
+	if err := store.SetPVCName(context.Background(), sessionID, storedPVC); err != nil {
+		t.Fatalf("SetPVCName failed: %v", err)
+	}
+
+	runtime.mu.Lock()
+	runtime.pvcExists[storedPVC] = true
+	runtime.mu.Unlock()
+
+	manager.createSandboxDirect(context.Background(), sessionID, nil, nil, false, nil)
+
+	runtime.mu.Lock()
+	env := runtime.createSandboxEnv[sessionID]
+	runtime.mu.Unlock()
+
+	if got := env[k8s.ExistingPVCEnvKey]; got != storedPVC {
+		t.Fatalf("expected %s=%q, got %q", k8s.ExistingPVCEnvKey, storedPVC, got)
+	}
+}
+
+func TestCreateSandboxDirect_SkipsStoredPVCWhenMissing(t *testing.T) {
+	manager, runtime, store := newTestManager(3)
+	sessionID := "sess-missing-pvc"
+	addSession(manager, sessionID, pb.SessionStatus_SESSION_STATUS_PAUSED, time.Now())
+
+	storedPVC := "agent-home-sess-does-not-exist"
+	if err := store.SetPVCName(context.Background(), sessionID, storedPVC); err != nil {
+		t.Fatalf("SetPVCName failed: %v", err)
+	}
+
+	runtime.mu.Lock()
+	runtime.pvcExists[storedPVC] = false
+	runtime.mu.Unlock()
+
+	manager.createSandboxDirect(context.Background(), sessionID, nil, nil, false, nil)
+
+	runtime.mu.Lock()
+	env := runtime.createSandboxEnv[sessionID]
+	runtime.mu.Unlock()
+
+	if _, ok := env[k8s.ExistingPVCEnvKey]; ok {
+		t.Fatalf("did not expect %s to be set when stored PVC is missing", k8s.ExistingPVCEnvKey)
+	}
 }
 
 func TestEnsureActiveSlot_NoActionWhenUnderLimit(t *testing.T) {
