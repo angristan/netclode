@@ -9,6 +9,7 @@ package netclodev1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -188,6 +189,7 @@ type ControlPlaneMessage struct {
 	//	*ControlPlaneMessage_TerminalInput
 	//	*ControlPlaneMessage_UpdateGitCredentials
 	//	*ControlPlaneMessage_SessionAssigned
+	//	*ControlPlaneMessage_UpdateCodexAuth
 	Message       isControlPlaneMessage_Message `protobuf_oneof:"message"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -311,6 +313,15 @@ func (x *ControlPlaneMessage) GetSessionAssigned() *SessionAssigned {
 	return nil
 }
 
+func (x *ControlPlaneMessage) GetUpdateCodexAuth() *UpdateCodexAuth {
+	if x != nil {
+		if x, ok := x.Message.(*ControlPlaneMessage_UpdateCodexAuth); ok {
+			return x.UpdateCodexAuth
+		}
+	}
+	return nil
+}
+
 type isControlPlaneMessage_Message interface {
 	isControlPlaneMessage_Message()
 }
@@ -360,6 +371,11 @@ type ControlPlaneMessage_SessionAssigned struct {
 	SessionAssigned *SessionAssigned `protobuf:"bytes,9,opt,name=session_assigned,json=sessionAssigned,proto3,oneof"`
 }
 
+type ControlPlaneMessage_UpdateCodexAuth struct {
+	// Update Codex OAuth tokens for an active session.
+	UpdateCodexAuth *UpdateCodexAuth `protobuf:"bytes,10,opt,name=update_codex_auth,json=updateCodexAuth,proto3,oneof"`
+}
+
 func (*ControlPlaneMessage_Registered) isControlPlaneMessage_Message() {}
 
 func (*ControlPlaneMessage_ExecutePrompt) isControlPlaneMessage_Message() {}
@@ -377,6 +393,8 @@ func (*ControlPlaneMessage_TerminalInput) isControlPlaneMessage_Message() {}
 func (*ControlPlaneMessage_UpdateGitCredentials) isControlPlaneMessage_Message() {}
 
 func (*ControlPlaneMessage_SessionAssigned) isControlPlaneMessage_Message() {}
+
+func (*ControlPlaneMessage_UpdateCodexAuth) isControlPlaneMessage_Message() {}
 
 // SessionAssigned is sent to warm pool agents when a session is bound.
 // This replaces the HTTP polling approach for instant session start.
@@ -1540,11 +1558,72 @@ func (x *UpdateGitCredentials) GetRepoAccess() RepoAccess {
 	return RepoAccess_REPO_ACCESS_UNSPECIFIED
 }
 
+// UpdateCodexAuth updates short-lived Codex OAuth tokens for the running agent.
+type UpdateCodexAuth struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	IdToken       string                 `protobuf:"bytes,2,opt,name=id_token,json=idToken,proto3" json:"id_token,omitempty"`
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3,oneof" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateCodexAuth) Reset() {
+	*x = UpdateCodexAuth{}
+	mi := &file_netclode_v1_agent_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateCodexAuth) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateCodexAuth) ProtoMessage() {}
+
+func (x *UpdateCodexAuth) ProtoReflect() protoreflect.Message {
+	mi := &file_netclode_v1_agent_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateCodexAuth.ProtoReflect.Descriptor instead.
+func (*UpdateCodexAuth) Descriptor() ([]byte, []int) {
+	return file_netclode_v1_agent_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *UpdateCodexAuth) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
+	}
+	return ""
+}
+
+func (x *UpdateCodexAuth) GetIdToken() string {
+	if x != nil {
+		return x.IdToken
+	}
+	return ""
+}
+
+func (x *UpdateCodexAuth) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
 var File_netclode_v1_agent_proto protoreflect.FileDescriptor
 
 const file_netclode_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x17netclode/v1/agent.proto\x12\vnetclode.v1\x1a\x18netclode/v1/common.proto\x1a\x18netclode/v1/events.proto\"\xdf\x03\n" +
+	"\x17netclode/v1/agent.proto\x12\vnetclode.v1\x1a\x18netclode/v1/common.proto\x1a\x18netclode/v1/events.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdf\x03\n" +
 	"\fAgentMessage\x128\n" +
 	"\bregister\x18\x01 \x01(\v2\x1a.netclode.v1.AgentRegisterH\x00R\bregister\x12K\n" +
 	"\x0fprompt_response\x18\x02 \x01(\v2 .netclode.v1.AgentStreamResponseH\x00R\x0epromptResponse\x12K\n" +
@@ -1552,7 +1631,7 @@ const file_netclode_v1_agent_proto_rawDesc = "" +
 	"\x0etitle_response\x18\x04 \x01(\v2\x1f.netclode.v1.AgentTitleResponseH\x00R\rtitleResponse\x12U\n" +
 	"\x13git_status_response\x18\x05 \x01(\v2#.netclode.v1.AgentGitStatusResponseH\x00R\x11gitStatusResponse\x12O\n" +
 	"\x11git_diff_response\x18\x06 \x01(\v2!.netclode.v1.AgentGitDiffResponseH\x00R\x0fgitDiffResponseB\t\n" +
-	"\amessage\"\xb5\x05\n" +
+	"\amessage\"\x81\x06\n" +
 	"\x13ControlPlaneMessage\x12>\n" +
 	"\n" +
 	"registered\x18\x01 \x01(\v2\x1c.netclode.v1.AgentRegisteredH\x00R\n" +
@@ -1565,7 +1644,9 @@ const file_netclode_v1_agent_proto_rawDesc = "" +
 	"getGitDiff\x12H\n" +
 	"\x0eterminal_input\x18\a \x01(\v2\x1f.netclode.v1.AgentTerminalInputH\x00R\rterminalInput\x12Y\n" +
 	"\x16update_git_credentials\x18\b \x01(\v2!.netclode.v1.UpdateGitCredentialsH\x00R\x14updateGitCredentials\x12I\n" +
-	"\x10session_assigned\x18\t \x01(\v2\x1c.netclode.v1.SessionAssignedH\x00R\x0fsessionAssignedB\t\n" +
+	"\x10session_assigned\x18\t \x01(\v2\x1c.netclode.v1.SessionAssignedH\x00R\x0fsessionAssigned\x12J\n" +
+	"\x11update_codex_auth\x18\n" +
+	" \x01(\v2\x1c.netclode.v1.UpdateCodexAuthH\x00R\x0fupdateCodexAuthB\t\n" +
 	"\amessage\"d\n" +
 	"\x0fSessionAssigned\x12\x1d\n" +
 	"\n" +
@@ -1651,7 +1732,13 @@ const file_netclode_v1_agent_proto_rawDesc = "" +
 	"\x14UpdateGitCredentials\x12!\n" +
 	"\fgithub_token\x18\x01 \x01(\tR\vgithubToken\x128\n" +
 	"\vrepo_access\x18\x02 \x01(\x0e2\x17.netclode.v1.RepoAccessR\n" +
-	"repoAccess2Z\n" +
+	"repoAccess\"\x9e\x01\n" +
+	"\x0fUpdateCodexAuth\x12!\n" +
+	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12\x19\n" +
+	"\bid_token\x18\x02 \x01(\tR\aidToken\x12>\n" +
+	"\n" +
+	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\texpiresAt\x88\x01\x01B\r\n" +
+	"\v_expires_at2Z\n" +
 	"\fAgentService\x12J\n" +
 	"\aConnect\x12\x19.netclode.v1.AgentMessage\x1a .netclode.v1.ControlPlaneMessage(\x010\x01B\xbb\x01\n" +
 	"\x0fcom.netclode.v1B\n" +
@@ -1669,7 +1756,7 @@ func file_netclode_v1_agent_proto_rawDescGZIP() []byte {
 	return file_netclode_v1_agent_proto_rawDescData
 }
 
-var file_netclode_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_netclode_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_netclode_v1_agent_proto_goTypes = []any{
 	(*AgentMessage)(nil),           // 0: netclode.v1.AgentMessage
 	(*ControlPlaneMessage)(nil),    // 1: netclode.v1.ControlPlaneMessage
@@ -1693,10 +1780,12 @@ var file_netclode_v1_agent_proto_goTypes = []any{
 	(*AgentTerminalInput)(nil),     // 19: netclode.v1.AgentTerminalInput
 	(*AgentTerminalResize)(nil),    // 20: netclode.v1.AgentTerminalResize
 	(*UpdateGitCredentials)(nil),   // 21: netclode.v1.UpdateGitCredentials
-	(*SessionConfig)(nil),          // 22: netclode.v1.SessionConfig
-	(*AgentEvent)(nil),             // 23: netclode.v1.AgentEvent
-	(*GitFileChange)(nil),          // 24: netclode.v1.GitFileChange
-	(RepoAccess)(0),                // 25: netclode.v1.RepoAccess
+	(*UpdateCodexAuth)(nil),        // 22: netclode.v1.UpdateCodexAuth
+	(*SessionConfig)(nil),          // 23: netclode.v1.SessionConfig
+	(*AgentEvent)(nil),             // 24: netclode.v1.AgentEvent
+	(*GitFileChange)(nil),          // 25: netclode.v1.GitFileChange
+	(RepoAccess)(0),                // 26: netclode.v1.RepoAccess
+	(*timestamppb.Timestamp)(nil),  // 27: google.protobuf.Timestamp
 }
 var file_netclode_v1_agent_proto_depIdxs = []int32{
 	3,  // 0: netclode.v1.AgentMessage.register:type_name -> netclode.v1.AgentRegister
@@ -1714,23 +1803,25 @@ var file_netclode_v1_agent_proto_depIdxs = []int32{
 	19, // 12: netclode.v1.ControlPlaneMessage.terminal_input:type_name -> netclode.v1.AgentTerminalInput
 	21, // 13: netclode.v1.ControlPlaneMessage.update_git_credentials:type_name -> netclode.v1.UpdateGitCredentials
 	2,  // 14: netclode.v1.ControlPlaneMessage.session_assigned:type_name -> netclode.v1.SessionAssigned
-	22, // 15: netclode.v1.SessionAssigned.config:type_name -> netclode.v1.SessionConfig
-	5,  // 16: netclode.v1.AgentStreamResponse.text_delta:type_name -> netclode.v1.AgentTextDelta
-	23, // 17: netclode.v1.AgentStreamResponse.event:type_name -> netclode.v1.AgentEvent
-	6,  // 18: netclode.v1.AgentStreamResponse.system_message:type_name -> netclode.v1.AgentSystemMessage
-	7,  // 19: netclode.v1.AgentStreamResponse.result:type_name -> netclode.v1.AgentResult
-	8,  // 20: netclode.v1.AgentStreamResponse.error:type_name -> netclode.v1.AgentError
-	24, // 21: netclode.v1.AgentGitStatusResponse.files:type_name -> netclode.v1.GitFileChange
-	22, // 22: netclode.v1.AgentRegistered.config:type_name -> netclode.v1.SessionConfig
-	20, // 23: netclode.v1.AgentTerminalInput.resize:type_name -> netclode.v1.AgentTerminalResize
-	25, // 24: netclode.v1.UpdateGitCredentials.repo_access:type_name -> netclode.v1.RepoAccess
-	0,  // 25: netclode.v1.AgentService.Connect:input_type -> netclode.v1.AgentMessage
-	1,  // 26: netclode.v1.AgentService.Connect:output_type -> netclode.v1.ControlPlaneMessage
-	26, // [26:27] is the sub-list for method output_type
-	25, // [25:26] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	22, // 15: netclode.v1.ControlPlaneMessage.update_codex_auth:type_name -> netclode.v1.UpdateCodexAuth
+	23, // 16: netclode.v1.SessionAssigned.config:type_name -> netclode.v1.SessionConfig
+	5,  // 17: netclode.v1.AgentStreamResponse.text_delta:type_name -> netclode.v1.AgentTextDelta
+	24, // 18: netclode.v1.AgentStreamResponse.event:type_name -> netclode.v1.AgentEvent
+	6,  // 19: netclode.v1.AgentStreamResponse.system_message:type_name -> netclode.v1.AgentSystemMessage
+	7,  // 20: netclode.v1.AgentStreamResponse.result:type_name -> netclode.v1.AgentResult
+	8,  // 21: netclode.v1.AgentStreamResponse.error:type_name -> netclode.v1.AgentError
+	25, // 22: netclode.v1.AgentGitStatusResponse.files:type_name -> netclode.v1.GitFileChange
+	23, // 23: netclode.v1.AgentRegistered.config:type_name -> netclode.v1.SessionConfig
+	20, // 24: netclode.v1.AgentTerminalInput.resize:type_name -> netclode.v1.AgentTerminalResize
+	26, // 25: netclode.v1.UpdateGitCredentials.repo_access:type_name -> netclode.v1.RepoAccess
+	27, // 26: netclode.v1.UpdateCodexAuth.expires_at:type_name -> google.protobuf.Timestamp
+	0,  // 27: netclode.v1.AgentService.Connect:input_type -> netclode.v1.AgentMessage
+	1,  // 28: netclode.v1.AgentService.Connect:output_type -> netclode.v1.ControlPlaneMessage
+	28, // [28:29] is the sub-list for method output_type
+	27, // [27:28] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_netclode_v1_agent_proto_init() }
@@ -1758,6 +1849,7 @@ func file_netclode_v1_agent_proto_init() {
 		(*ControlPlaneMessage_TerminalInput)(nil),
 		(*ControlPlaneMessage_UpdateGitCredentials)(nil),
 		(*ControlPlaneMessage_SessionAssigned)(nil),
+		(*ControlPlaneMessage_UpdateCodexAuth)(nil),
 	}
 	file_netclode_v1_agent_proto_msgTypes[3].OneofWrappers = []any{}
 	file_netclode_v1_agent_proto_msgTypes[4].OneofWrappers = []any{
@@ -1773,13 +1865,14 @@ func file_netclode_v1_agent_proto_init() {
 		(*AgentTerminalInput_Data)(nil),
 		(*AgentTerminalInput_Resize)(nil),
 	}
+	file_netclode_v1_agent_proto_msgTypes[22].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_netclode_v1_agent_proto_rawDesc), len(file_netclode_v1_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   22,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

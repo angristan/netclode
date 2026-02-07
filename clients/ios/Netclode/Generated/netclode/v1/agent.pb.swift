@@ -192,6 +192,15 @@ public struct Netclode_V1_ControlPlaneMessage: Sendable {
     set {message = .sessionAssigned(newValue)}
   }
 
+  /// Update Codex OAuth tokens for an active session.
+  public var updateCodexAuth: Netclode_V1_UpdateCodexAuth {
+    get {
+      if case .updateCodexAuth(let v)? = message {return v}
+      return Netclode_V1_UpdateCodexAuth()
+    }
+    set {message = .updateCodexAuth(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public enum OneOf_Message: Equatable, Sendable {
@@ -213,6 +222,8 @@ public struct Netclode_V1_ControlPlaneMessage: Sendable {
     case updateGitCredentials(Netclode_V1_UpdateGitCredentials)
     /// Session assigned (warm pool mode) - pushed when claim binds
     case sessionAssigned(Netclode_V1_SessionAssigned)
+    /// Update Codex OAuth tokens for an active session.
+    case updateCodexAuth(Netclode_V1_UpdateCodexAuth)
 
   }
 
@@ -231,11 +242,11 @@ public struct Netclode_V1_SessionAssigned: Sendable {
 
   /// Full session configuration
   public var config: Netclode_V1_SessionConfig {
-    get {return _config ?? Netclode_V1_SessionConfig()}
+    get {_config ?? Netclode_V1_SessionConfig()}
     set {_config = newValue}
   }
   /// Returns true if `config` has been explicitly set.
-  public var hasConfig: Bool {return self._config != nil}
+  public var hasConfig: Bool {self._config != nil}
   /// Clears the value of `config`. Subsequent reads from it will return its default value.
   public mutating func clearConfig() {self._config = nil}
 
@@ -254,11 +265,11 @@ public struct Netclode_V1_AgentRegister: Sendable {
 
   /// Session this agent is servicing (empty for warm pool mode)
   public var sessionID: String {
-    get {return _sessionID ?? String()}
+    get {_sessionID ?? String()}
     set {_sessionID = newValue}
   }
   /// Returns true if `sessionID` has been explicitly set.
-  public var hasSessionID: Bool {return self._sessionID != nil}
+  public var hasSessionID: Bool {self._sessionID != nil}
   /// Clears the value of `sessionID`. Subsequent reads from it will return its default value.
   public mutating func clearSessionID() {self._sessionID = nil}
 
@@ -267,21 +278,21 @@ public struct Netclode_V1_AgentRegister: Sendable {
 
   /// Pod name for warm pool mode (deprecated, use k8s_token)
   public var podName: String {
-    get {return _podName ?? String()}
+    get {_podName ?? String()}
     set {_podName = newValue}
   }
   /// Returns true if `podName` has been explicitly set.
-  public var hasPodName: Bool {return self._podName != nil}
+  public var hasPodName: Bool {self._podName != nil}
   /// Clears the value of `podName`. Subsequent reads from it will return its default value.
   public mutating func clearPodName() {self._podName = nil}
 
   /// Kubernetes ServiceAccount token for identity verification
   public var k8SToken: String {
-    get {return _k8SToken ?? String()}
+    get {_k8SToken ?? String()}
     set {_k8SToken = newValue}
   }
   /// Returns true if `k8SToken` has been explicitly set.
-  public var hasK8SToken: Bool {return self._k8SToken != nil}
+  public var hasK8SToken: Bool {self._k8SToken != nil}
   /// Clears the value of `k8SToken`. Subsequent reads from it will return its default value.
   public mutating func clearK8SToken() {self._k8SToken = nil}
 
@@ -513,21 +524,21 @@ public struct Netclode_V1_AgentRegistered: Sendable {
 
   /// Error message if registration failed
   public var error: String {
-    get {return _error ?? String()}
+    get {_error ?? String()}
     set {_error = newValue}
   }
   /// Returns true if `error` has been explicitly set.
-  public var hasError: Bool {return self._error != nil}
+  public var hasError: Bool {self._error != nil}
   /// Clears the value of `error`. Subsequent reads from it will return its default value.
   public mutating func clearError() {self._error = nil}
 
   /// Session configuration for the agent
   public var config: Netclode_V1_SessionConfig {
-    get {return _config ?? Netclode_V1_SessionConfig()}
+    get {_config ?? Netclode_V1_SessionConfig()}
     set {_config = newValue}
   }
   /// Returns true if `config` has been explicitly set.
-  public var hasConfig: Bool {return self._config != nil}
+  public var hasConfig: Bool {self._config != nil}
   /// Clears the value of `config`. Subsequent reads from it will return its default value.
   public mutating func clearConfig() {self._config = nil}
 
@@ -606,11 +617,11 @@ public struct Netclode_V1_GetGitDiffRequest: Sendable {
 
   /// Specific file, or all files if empty
   public var file: String {
-    get {return _file ?? String()}
+    get {_file ?? String()}
     set {_file = newValue}
   }
   /// Returns true if `file` has been explicitly set.
-  public var hasFile: Bool {return self._file != nil}
+  public var hasFile: Bool {self._file != nil}
   /// Clears the value of `file`. Subsequent reads from it will return its default value.
   public mutating func clearFile() {self._file = nil}
 
@@ -693,6 +704,32 @@ public struct Netclode_V1_UpdateGitCredentials: Sendable {
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+}
+
+/// UpdateCodexAuth updates short-lived Codex OAuth tokens for the running agent.
+public struct Netclode_V1_UpdateCodexAuth: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var accessToken: String = String()
+
+  public var idToken: String = String()
+
+  public var expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_expiresAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_expiresAt = newValue}
+  }
+  /// Returns true if `expiresAt` has been explicitly set.
+  public var hasExpiresAt: Bool {self._expiresAt != nil}
+  /// Clears the value of `expiresAt`. Subsequent reads from it will return its default value.
+  public mutating func clearExpiresAt() {self._expiresAt = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 }
 
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
@@ -836,7 +873,7 @@ extension Netclode_V1_AgentMessage: SwiftProtobuf.Message, SwiftProtobuf._Messag
 
 extension Netclode_V1_ControlPlaneMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ControlPlaneMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}registered\0\u{3}execute_prompt\0\u{1}interrupt\0\u{3}generate_title\0\u{3}get_git_status\0\u{3}get_git_diff\0\u{3}terminal_input\0\u{3}update_git_credentials\0\u{3}session_assigned\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}registered\0\u{3}execute_prompt\0\u{1}interrupt\0\u{3}generate_title\0\u{3}get_git_status\0\u{3}get_git_diff\0\u{3}terminal_input\0\u{3}update_git_credentials\0\u{3}session_assigned\0\u{3}update_codex_auth\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -961,6 +998,19 @@ extension Netclode_V1_ControlPlaneMessage: SwiftProtobuf.Message, SwiftProtobuf.
           self.message = .sessionAssigned(v)
         }
       }()
+      case 10: try {
+        var v: Netclode_V1_UpdateCodexAuth?
+        var hadOneofValue = false
+        if let current = self.message {
+          hadOneofValue = true
+          if case .updateCodexAuth(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.message = .updateCodexAuth(v)
+        }
+      }()
       default: break
       }
     }
@@ -1007,6 +1057,10 @@ extension Netclode_V1_ControlPlaneMessage: SwiftProtobuf.Message, SwiftProtobuf.
     case .sessionAssigned?: try {
       guard case .sessionAssigned(let v)? = self.message else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
+    }()
+    case .updateCodexAuth?: try {
+      guard case .updateCodexAuth(let v)? = self.message else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
     }()
     case nil: break
     }
@@ -1830,6 +1884,50 @@ extension Netclode_V1_UpdateGitCredentials: SwiftProtobuf.Message, SwiftProtobuf
   public static func ==(lhs: Netclode_V1_UpdateGitCredentials, rhs: Netclode_V1_UpdateGitCredentials) -> Bool {
     if lhs.githubToken != rhs.githubToken {return false}
     if lhs.repoAccess != rhs.repoAccess {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Netclode_V1_UpdateCodexAuth: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".UpdateCodexAuth"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}access_token\0\u{3}id_token\0\u{3}expires_at\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.accessToken) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.idToken) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._expiresAt) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.accessToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.accessToken, fieldNumber: 1)
+    }
+    if !self.idToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.idToken, fieldNumber: 2)
+    }
+    try { if let v = self._expiresAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Netclode_V1_UpdateCodexAuth, rhs: Netclode_V1_UpdateCodexAuth) -> Bool {
+    if lhs.accessToken != rhs.accessToken {return false}
+    if lhs.idToken != rhs.idToken {return false}
+    if lhs._expiresAt != rhs._expiresAt {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

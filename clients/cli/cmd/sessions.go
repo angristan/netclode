@@ -329,6 +329,13 @@ func runSessionsCreate(cmd *cobra.Command, args []string) error {
 		MemoryMB:      createMemoryMB,
 	}
 
+	if sdkType == pb.SdkType_SDK_TYPE_CODEX {
+		authMode := codexModelAuthMode(createModel)
+		if authMode == "" {
+			return fmt.Errorf("codex model must include auth suffix (:oauth or :api), e.g. gpt-5-codex:oauth:high")
+		}
+	}
+
 	session, err := c.CreateSession(ctx, opts)
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
@@ -357,11 +364,32 @@ func formatSdkType(sdkType pb.SdkType) string {
 		return "opencode"
 	case pb.SdkType_SDK_TYPE_COPILOT:
 		return "copilot"
+	case pb.SdkType_SDK_TYPE_CODEX:
+		return "codex"
 	case pb.SdkType_SDK_TYPE_CLAUDE:
 		return "claude"
 	default:
 		return "unknown"
 	}
+}
+
+func codexModelAuthMode(model string) string {
+	parts := strings.Split(model, ":")
+	if len(parts) < 2 {
+		return ""
+	}
+	last := parts[len(parts)-1]
+	switch last {
+	case "minimal", "low", "medium", "high", "xhigh":
+		if len(parts) < 3 {
+			return ""
+		}
+		last = parts[len(parts)-2]
+	}
+	if last == "api" || last == "oauth" {
+		return last
+	}
+	return ""
 }
 
 func runSessionsPause(cmd *cobra.Command, args []string) error {

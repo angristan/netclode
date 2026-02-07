@@ -20,6 +20,52 @@ fileprivate struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobuf.ProtobufAP
   typealias Version = _2
 }
 
+public enum Netclode_V1_CodexAuthState: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case unauthenticated // = 1
+  case pending // = 2
+  case ready // = 3
+  case error // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .unauthenticated
+    case 2: self = .pending
+    case 3: self = .ready
+    case 4: self = .error
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .unauthenticated: return 1
+    case .pending: return 2
+    case .ready: return 3
+    case .error: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Netclode_V1_CodexAuthState] = [
+    .unspecified,
+    .unauthenticated,
+    .pending,
+    .ready,
+    .error,
+  ]
+
+}
+
 /// ClientMessage is the union of all client-to-server messages.
 public struct Netclode_V1_ClientMessage: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
@@ -207,6 +253,31 @@ public struct Netclode_V1_ClientMessage: Sendable {
     set {message = .getResourceLimits(newValue)}
   }
 
+  /// Backend-managed Codex OAuth flow
+  public var codexAuthStart: Netclode_V1_CodexAuthStartRequest {
+    get {
+      if case .codexAuthStart(let v)? = message {return v}
+      return Netclode_V1_CodexAuthStartRequest()
+    }
+    set {message = .codexAuthStart(newValue)}
+  }
+
+  public var codexAuthStatus: Netclode_V1_CodexAuthStatusRequest {
+    get {
+      if case .codexAuthStatus(let v)? = message {return v}
+      return Netclode_V1_CodexAuthStatusRequest()
+    }
+    set {message = .codexAuthStatus(newValue)}
+  }
+
+  public var codexAuthLogout: Netclode_V1_CodexAuthLogoutRequest {
+    get {
+      if case .codexAuthLogout(let v)? = message {return v}
+      return Netclode_V1_CodexAuthLogoutRequest()
+    }
+    set {message = .codexAuthLogout(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public enum OneOf_Message: Equatable, Sendable {
@@ -235,6 +306,10 @@ public struct Netclode_V1_ClientMessage: Sendable {
     case updateRepoAccess(Netclode_V1_UpdateRepoAccessRequest)
     /// Resource limits
     case getResourceLimits(Netclode_V1_GetResourceLimitsRequest)
+    /// Backend-managed Codex OAuth flow
+    case codexAuthStart(Netclode_V1_CodexAuthStartRequest)
+    case codexAuthStatus(Netclode_V1_CodexAuthStatusRequest)
+    case codexAuthLogout(Netclode_V1_CodexAuthLogoutRequest)
 
   }
 
@@ -414,6 +489,31 @@ public struct Netclode_V1_ServerMessage: Sendable {
     set {message = .resourceLimits(newValue)}
   }
 
+  /// Backend-managed Codex OAuth flow
+  public var codexAuthStarted: Netclode_V1_CodexAuthStartedResponse {
+    get {
+      if case .codexAuthStarted(let v)? = message {return v}
+      return Netclode_V1_CodexAuthStartedResponse()
+    }
+    set {message = .codexAuthStarted(newValue)}
+  }
+
+  public var codexAuthStatus: Netclode_V1_CodexAuthStatusResponse {
+    get {
+      if case .codexAuthStatus(let v)? = message {return v}
+      return Netclode_V1_CodexAuthStatusResponse()
+    }
+    set {message = .codexAuthStatus(newValue)}
+  }
+
+  public var codexAuthLoggedOut: Netclode_V1_CodexAuthLoggedOutResponse {
+    get {
+      if case .codexAuthLoggedOut(let v)? = message {return v}
+      return Netclode_V1_CodexAuthLoggedOutResponse()
+    }
+    set {message = .codexAuthLoggedOut(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public enum OneOf_Message: Equatable, Sendable {
@@ -442,6 +542,10 @@ public struct Netclode_V1_ServerMessage: Sendable {
     case repoAccessUpdated(Netclode_V1_RepoAccessUpdatedResponse)
     /// Resource limits
     case resourceLimits(Netclode_V1_ResourceLimitsResponse)
+    /// Backend-managed Codex OAuth flow
+    case codexAuthStarted(Netclode_V1_CodexAuthStartedResponse)
+    case codexAuthStatus(Netclode_V1_CodexAuthStatusResponse)
+    case codexAuthLoggedOut(Netclode_V1_CodexAuthLoggedOutResponse)
 
   }
 
@@ -464,6 +568,34 @@ public struct Netclode_V1_NetworkConfig: Sendable {
   public init() {}
 }
 
+/// CodexOAuthTokens contains ChatGPT OAuth tokens for Codex sessions.
+public struct Netclode_V1_CodexOAuthTokens: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var accessToken: String = String()
+
+  public var idToken: String = String()
+
+  public var refreshToken: String = String()
+
+  public var expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_expiresAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_expiresAt = newValue}
+  }
+  /// Returns true if `expiresAt` has been explicitly set.
+  public var hasExpiresAt: Bool {self._expiresAt != nil}
+  /// Clears the value of `expiresAt`. Subsequent reads from it will return its default value.
+  public mutating func clearExpiresAt() {self._expiresAt = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
 public struct Netclode_V1_CreateSessionRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -471,21 +603,21 @@ public struct Netclode_V1_CreateSessionRequest: Sendable {
 
   /// Client-generated ID for request correlation
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
   /// Initial session name
   public var name: String {
-    get {return _name ?? String()}
+    get {_name ?? String()}
     set {_name = newValue}
   }
   /// Returns true if `name` has been explicitly set.
-  public var hasName: Bool {return self._name != nil}
+  public var hasName: Bool {self._name != nil}
   /// Clears the value of `name`. Subsequent reads from it will return its default value.
   public mutating func clearName() {self._name = nil}
 
@@ -494,73 +626,83 @@ public struct Netclode_V1_CreateSessionRequest: Sendable {
 
   /// Permission level for repository
   public var repoAccess: Netclode_V1_RepoAccess {
-    get {return _repoAccess ?? .unspecified}
+    get {_repoAccess ?? .unspecified}
     set {_repoAccess = newValue}
   }
   /// Returns true if `repoAccess` has been explicitly set.
-  public var hasRepoAccess: Bool {return self._repoAccess != nil}
+  public var hasRepoAccess: Bool {self._repoAccess != nil}
   /// Clears the value of `repoAccess`. Subsequent reads from it will return its default value.
   public mutating func clearRepoAccess() {self._repoAccess = nil}
 
   /// Optional prompt to send immediately after creation
   public var initialPrompt: String {
-    get {return _initialPrompt ?? String()}
+    get {_initialPrompt ?? String()}
     set {_initialPrompt = newValue}
   }
   /// Returns true if `initialPrompt` has been explicitly set.
-  public var hasInitialPrompt: Bool {return self._initialPrompt != nil}
+  public var hasInitialPrompt: Bool {self._initialPrompt != nil}
   /// Clears the value of `initialPrompt`. Subsequent reads from it will return its default value.
   public mutating func clearInitialPrompt() {self._initialPrompt = nil}
 
   /// SDK to use (defaults to CLAUDE)
   public var sdkType: Netclode_V1_SdkType {
-    get {return _sdkType ?? .unspecified}
+    get {_sdkType ?? .unspecified}
     set {_sdkType = newValue}
   }
   /// Returns true if `sdkType` has been explicitly set.
-  public var hasSdkType: Bool {return self._sdkType != nil}
+  public var hasSdkType: Bool {self._sdkType != nil}
   /// Clears the value of `sdkType`. Subsequent reads from it will return its default value.
   public mutating func clearSdkType() {self._sdkType = nil}
 
   /// Model ID (e.g., "claude-sonnet-4-0", "gpt-4o")
   public var model: String {
-    get {return _model ?? String()}
+    get {_model ?? String()}
     set {_model = newValue}
   }
   /// Returns true if `model` has been explicitly set.
-  public var hasModel: Bool {return self._model != nil}
+  public var hasModel: Bool {self._model != nil}
   /// Clears the value of `model`. Subsequent reads from it will return its default value.
   public mutating func clearModel() {self._model = nil}
 
   /// Backend for Copilot SDK (GitHub or Anthropic)
   public var copilotBackend: Netclode_V1_CopilotBackend {
-    get {return _copilotBackend ?? .unspecified}
+    get {_copilotBackend ?? .unspecified}
     set {_copilotBackend = newValue}
   }
   /// Returns true if `copilotBackend` has been explicitly set.
-  public var hasCopilotBackend: Bool {return self._copilotBackend != nil}
+  public var hasCopilotBackend: Bool {self._copilotBackend != nil}
   /// Clears the value of `copilotBackend`. Subsequent reads from it will return its default value.
   public mutating func clearCopilotBackend() {self._copilotBackend = nil}
 
   /// Network configuration (defaults to enabled)
   public var networkConfig: Netclode_V1_NetworkConfig {
-    get {return _networkConfig ?? Netclode_V1_NetworkConfig()}
+    get {_networkConfig ?? Netclode_V1_NetworkConfig()}
     set {_networkConfig = newValue}
   }
   /// Returns true if `networkConfig` has been explicitly set.
-  public var hasNetworkConfig: Bool {return self._networkConfig != nil}
+  public var hasNetworkConfig: Bool {self._networkConfig != nil}
   /// Clears the value of `networkConfig`. Subsequent reads from it will return its default value.
   public mutating func clearNetworkConfig() {self._networkConfig = nil}
 
   /// Custom VM resources (bypasses warm pool if set)
   public var resources: Netclode_V1_SandboxResources {
-    get {return _resources ?? Netclode_V1_SandboxResources()}
+    get {_resources ?? Netclode_V1_SandboxResources()}
     set {_resources = newValue}
   }
   /// Returns true if `resources` has been explicitly set.
-  public var hasResources: Bool {return self._resources != nil}
+  public var hasResources: Bool {self._resources != nil}
   /// Clears the value of `resources`. Subsequent reads from it will return its default value.
   public mutating func clearResources() {self._resources = nil}
+
+  /// Session-scoped OAuth tokens for Codex :oauth models
+  public var codexOauthTokens: Netclode_V1_CodexOAuthTokens {
+    get {_codexOauthTokens ?? Netclode_V1_CodexOAuthTokens()}
+    set {_codexOauthTokens = newValue}
+  }
+  /// Returns true if `codexOauthTokens` has been explicitly set.
+  public var hasCodexOauthTokens: Bool {self._codexOauthTokens != nil}
+  /// Clears the value of `codexOauthTokens`. Subsequent reads from it will return its default value.
+  public mutating func clearCodexOauthTokens() {self._codexOauthTokens = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -575,6 +717,7 @@ public struct Netclode_V1_CreateSessionRequest: Sendable {
   fileprivate var _copilotBackend: Netclode_V1_CopilotBackend? = nil
   fileprivate var _networkConfig: Netclode_V1_NetworkConfig? = nil
   fileprivate var _resources: Netclode_V1_SandboxResources? = nil
+  fileprivate var _codexOauthTokens: Netclode_V1_CodexOAuthTokens? = nil
 }
 
 public struct Netclode_V1_ListSessionsRequest: Sendable {
@@ -583,11 +726,11 @@ public struct Netclode_V1_ListSessionsRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -604,11 +747,11 @@ public struct Netclode_V1_OpenSessionRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -616,21 +759,21 @@ public struct Netclode_V1_OpenSessionRequest: Sendable {
 
   /// Cursor: return entries after this stream ID
   public var afterStreamID: String {
-    get {return _afterStreamID ?? String()}
+    get {_afterStreamID ?? String()}
     set {_afterStreamID = newValue}
   }
   /// Returns true if `afterStreamID` has been explicitly set.
-  public var hasAfterStreamID: Bool {return self._afterStreamID != nil}
+  public var hasAfterStreamID: Bool {self._afterStreamID != nil}
   /// Clears the value of `afterStreamID`. Subsequent reads from it will return its default value.
   public mutating func clearAfterStreamID() {self._afterStreamID = nil}
 
   /// Max entries to return (default: all)
   public var limit: Int32 {
-    get {return _limit ?? 0}
+    get {_limit ?? 0}
     set {_limit = newValue}
   }
   /// Returns true if `limit` has been explicitly set.
-  public var hasLimit: Bool {return self._limit != nil}
+  public var hasLimit: Bool {self._limit != nil}
   /// Clears the value of `limit`. Subsequent reads from it will return its default value.
   public mutating func clearLimit() {self._limit = nil}
 
@@ -649,11 +792,11 @@ public struct Netclode_V1_ResumeSessionRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -672,11 +815,11 @@ public struct Netclode_V1_PauseSessionRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -695,11 +838,11 @@ public struct Netclode_V1_DeleteSessionRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -718,11 +861,11 @@ public struct Netclode_V1_DeleteAllSessionsRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -739,11 +882,11 @@ public struct Netclode_V1_SendPromptRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -764,11 +907,11 @@ public struct Netclode_V1_InterruptPromptRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -787,11 +930,11 @@ public struct Netclode_V1_TerminalInputRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -812,11 +955,11 @@ public struct Netclode_V1_TerminalResizeRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -839,11 +982,11 @@ public struct Netclode_V1_ExposePortRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -864,11 +1007,11 @@ public struct Netclode_V1_SyncRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -885,11 +1028,11 @@ public struct Netclode_V1_ListGitHubReposRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -906,11 +1049,11 @@ public struct Netclode_V1_GitStatusRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -929,11 +1072,11 @@ public struct Netclode_V1_GitDiffRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -941,11 +1084,11 @@ public struct Netclode_V1_GitDiffRequest: Sendable {
 
   /// Specific file path, or all files if empty
   public var file: String {
-    get {return _file ?? String()}
+    get {_file ?? String()}
     set {_file = newValue}
   }
   /// Returns true if `file` has been explicitly set.
-  public var hasFile: Bool {return self._file != nil}
+  public var hasFile: Bool {self._file != nil}
   /// Clears the value of `file`. Subsequent reads from it will return its default value.
   public mutating func clearFile() {self._file = nil}
 
@@ -963,11 +1106,11 @@ public struct Netclode_V1_ListModelsRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -976,13 +1119,23 @@ public struct Netclode_V1_ListModelsRequest: Sendable {
 
   /// For Copilot: which backend's models to list
   public var copilotBackend: Netclode_V1_CopilotBackend {
-    get {return _copilotBackend ?? .unspecified}
+    get {_copilotBackend ?? .unspecified}
     set {_copilotBackend = newValue}
   }
   /// Returns true if `copilotBackend` has been explicitly set.
-  public var hasCopilotBackend: Bool {return self._copilotBackend != nil}
+  public var hasCopilotBackend: Bool {self._copilotBackend != nil}
   /// Clears the value of `copilotBackend`. Subsequent reads from it will return its default value.
   public mutating func clearCopilotBackend() {self._copilotBackend = nil}
+
+  /// Hint from client to include Codex :oauth model variants
+  public var codexOauthAvailable: Bool {
+    get {_codexOauthAvailable ?? false}
+    set {_codexOauthAvailable = newValue}
+  }
+  /// Returns true if `codexOauthAvailable` has been explicitly set.
+  public var hasCodexOauthAvailable: Bool {self._codexOauthAvailable != nil}
+  /// Clears the value of `codexOauthAvailable`. Subsequent reads from it will return its default value.
+  public mutating func clearCodexOauthAvailable() {self._codexOauthAvailable = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -990,6 +1143,7 @@ public struct Netclode_V1_ListModelsRequest: Sendable {
 
   fileprivate var _requestID: String? = nil
   fileprivate var _copilotBackend: Netclode_V1_CopilotBackend? = nil
+  fileprivate var _codexOauthAvailable: Bool? = nil
 }
 
 public struct Netclode_V1_GetCopilotStatusRequest: Sendable {
@@ -998,11 +1152,11 @@ public struct Netclode_V1_GetCopilotStatusRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1019,11 +1173,11 @@ public struct Netclode_V1_ListSnapshotsRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1042,11 +1196,11 @@ public struct Netclode_V1_RestoreSnapshotRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1067,11 +1221,11 @@ public struct Netclode_V1_UpdateRepoAccessRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1093,11 +1247,74 @@ public struct Netclode_V1_GetResourceLimitsRequest: Sendable {
   // methods supported on all messages.
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
+  /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
+  public mutating func clearRequestID() {self._requestID = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _requestID: String? = nil
+}
+
+public struct Netclode_V1_CodexAuthStartRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var requestID: String {
+    get {_requestID ?? String()}
+    set {_requestID = newValue}
+  }
+  /// Returns true if `requestID` has been explicitly set.
+  public var hasRequestID: Bool {self._requestID != nil}
+  /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
+  public mutating func clearRequestID() {self._requestID = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _requestID: String? = nil
+}
+
+public struct Netclode_V1_CodexAuthStatusRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var requestID: String {
+    get {_requestID ?? String()}
+    set {_requestID = newValue}
+  }
+  /// Returns true if `requestID` has been explicitly set.
+  public var hasRequestID: Bool {self._requestID != nil}
+  /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
+  public mutating func clearRequestID() {self._requestID = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _requestID: String? = nil
+}
+
+public struct Netclode_V1_CodexAuthLogoutRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var requestID: String {
+    get {_requestID ?? String()}
+    set {_requestID = newValue}
+  }
+  /// Returns true if `requestID` has been explicitly set.
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1114,21 +1331,21 @@ public struct Netclode_V1_SessionCreatedResponse: Sendable {
   // methods supported on all messages.
 
   public var session: Netclode_V1_Session {
-    get {return _session ?? Netclode_V1_Session()}
+    get {_session ?? Netclode_V1_Session()}
     set {_session = newValue}
   }
   /// Returns true if `session` has been explicitly set.
-  public var hasSession: Bool {return self._session != nil}
+  public var hasSession: Bool {self._session != nil}
   /// Clears the value of `session`. Subsequent reads from it will return its default value.
   public mutating func clearSession() {self._session = nil}
 
   /// Echoed from request for correlation
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1146,11 +1363,11 @@ public struct Netclode_V1_SessionUpdatedResponse: Sendable {
   // methods supported on all messages.
 
   public var session: Netclode_V1_Session {
-    get {return _session ?? Netclode_V1_Session()}
+    get {_session ?? Netclode_V1_Session()}
     set {_session = newValue}
   }
   /// Returns true if `session` has been explicitly set.
-  public var hasSession: Bool {return self._session != nil}
+  public var hasSession: Bool {self._session != nil}
   /// Clears the value of `session`. Subsequent reads from it will return its default value.
   public mutating func clearSession() {self._session = nil}
 
@@ -1169,11 +1386,11 @@ public struct Netclode_V1_SessionDeletedResponse: Sendable {
   public var sessionID: String = String()
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1192,11 +1409,11 @@ public struct Netclode_V1_SessionsDeletedAllResponse: Sendable {
   public var deletedIds: [String] = []
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1215,11 +1432,11 @@ public struct Netclode_V1_SessionListResponse: Sendable {
   public var sessions: [Netclode_V1_Session] = []
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1236,52 +1453,52 @@ public struct Netclode_V1_SessionStateResponse: @unchecked Sendable {
   // methods supported on all messages.
 
   public var session: Netclode_V1_Session {
-    get {return _storage._session ?? Netclode_V1_Session()}
+    get {_storage._session ?? Netclode_V1_Session()}
     set {_uniqueStorage()._session = newValue}
   }
   /// Returns true if `session` has been explicitly set.
-  public var hasSession: Bool {return _storage._session != nil}
+  public var hasSession: Bool {_storage._session != nil}
   /// Clears the value of `session`. Subsequent reads from it will return its default value.
   public mutating func clearSession() {_uniqueStorage()._session = nil}
 
   /// History: partial=false entries only
   public var entries: [Netclode_V1_StreamEntry] {
-    get {return _storage._entries}
+    get {_storage._entries}
     set {_uniqueStorage()._entries = newValue}
   }
 
   /// true if more entries available for pagination
   public var hasMore_p: Bool {
-    get {return _storage._hasMore_p}
+    get {_storage._hasMore_p}
     set {_uniqueStorage()._hasMore_p = newValue}
   }
 
   /// Cursor for subscribing to real-time updates
   public var lastStreamID: String {
-    get {return _storage._lastStreamID ?? String()}
+    get {_storage._lastStreamID ?? String()}
     set {_uniqueStorage()._lastStreamID = newValue}
   }
   /// Returns true if `lastStreamID` has been explicitly set.
-  public var hasLastStreamID: Bool {return _storage._lastStreamID != nil}
+  public var hasLastStreamID: Bool {_storage._lastStreamID != nil}
   /// Clears the value of `lastStreamID`. Subsequent reads from it will return its default value.
   public mutating func clearLastStreamID() {_uniqueStorage()._lastStreamID = nil}
 
   /// Accumulated streaming state if RUNNING
   public var inProgress: Netclode_V1_InProgressState {
-    get {return _storage._inProgress ?? Netclode_V1_InProgressState()}
+    get {_storage._inProgress ?? Netclode_V1_InProgressState()}
     set {_uniqueStorage()._inProgress = newValue}
   }
   /// Returns true if `inProgress` has been explicitly set.
-  public var hasInProgress: Bool {return _storage._inProgress != nil}
+  public var hasInProgress: Bool {_storage._inProgress != nil}
   /// Clears the value of `inProgress`. Subsequent reads from it will return its default value.
   public mutating func clearInProgress() {_uniqueStorage()._inProgress = nil}
 
   public var requestID: String {
-    get {return _storage._requestID ?? String()}
+    get {_storage._requestID ?? String()}
     set {_uniqueStorage()._requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return _storage._requestID != nil}
+  public var hasRequestID: Bool {_storage._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {_uniqueStorage()._requestID = nil}
 
@@ -1300,20 +1517,20 @@ public struct Netclode_V1_SyncResponse: Sendable {
   public var sessions: [Netclode_V1_SessionSummary] = []
 
   public var serverTime: SwiftProtobuf.Google_Protobuf_Timestamp {
-    get {return _serverTime ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    get {_serverTime ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
     set {_serverTime = newValue}
   }
   /// Returns true if `serverTime` has been explicitly set.
-  public var hasServerTime: Bool {return self._serverTime != nil}
+  public var hasServerTime: Bool {self._serverTime != nil}
   /// Clears the value of `serverTime`. Subsequent reads from it will return its default value.
   public mutating func clearServerTime() {self._serverTime = nil}
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1333,16 +1550,16 @@ public struct Netclode_V1_StreamEntryResponse: @unchecked Sendable {
   // methods supported on all messages.
 
   public var sessionID: String {
-    get {return _storage._sessionID}
+    get {_storage._sessionID}
     set {_uniqueStorage()._sessionID = newValue}
   }
 
   public var entry: Netclode_V1_StreamEntry {
-    get {return _storage._entry ?? Netclode_V1_StreamEntry()}
+    get {_storage._entry ?? Netclode_V1_StreamEntry()}
     set {_uniqueStorage()._entry = newValue}
   }
   /// Returns true if `entry` has been explicitly set.
-  public var hasEntry: Bool {return _storage._entry != nil}
+  public var hasEntry: Bool {_storage._entry != nil}
   /// Clears the value of `entry`. Subsequent reads from it will return its default value.
   public mutating func clearEntry() {_uniqueStorage()._entry = nil}
 
@@ -1365,11 +1582,11 @@ public struct Netclode_V1_PortExposedResponse: Sendable {
   public var previewURL: String = String()
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1388,11 +1605,11 @@ public struct Netclode_V1_GitHubReposResponse: Sendable {
   public var repos: [Netclode_V1_GitHubRepo] = []
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1413,11 +1630,11 @@ public struct Netclode_V1_GitStatusResponse: Sendable {
   public var files: [Netclode_V1_GitFileChange] = []
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1438,11 +1655,11 @@ public struct Netclode_V1_GitDiffResponse: Sendable {
   public var diff: String = String()
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1462,21 +1679,21 @@ public struct Netclode_V1_ErrorResponse: Sendable {
 
   /// Structured error details
   public var error: Netclode_V1_Error {
-    get {return _error ?? Netclode_V1_Error()}
+    get {_error ?? Netclode_V1_Error()}
     set {_error = newValue}
   }
   /// Returns true if `error` has been explicitly set.
-  public var hasError: Bool {return self._error != nil}
+  public var hasError: Bool {self._error != nil}
   /// Clears the value of `error`. Subsequent reads from it will return its default value.
   public mutating func clearError() {self._error = nil}
 
   /// Echoed from request for correlation
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1497,21 +1714,21 @@ public struct Netclode_V1_ModelsResponse: Sendable {
   public var models: [Netclode_V1_ModelInfo] = []
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
   /// Which SDK these models are for
   public var sdkType: Netclode_V1_SdkType {
-    get {return _sdkType ?? .unspecified}
+    get {_sdkType ?? .unspecified}
     set {_sdkType = newValue}
   }
   /// Returns true if `sdkType` has been explicitly set.
-  public var hasSdkType: Bool {return self._sdkType != nil}
+  public var hasSdkType: Bool {self._sdkType != nil}
   /// Clears the value of `sdkType`. Subsequent reads from it will return its default value.
   public mutating func clearSdkType() {self._sdkType = nil}
 
@@ -1530,30 +1747,30 @@ public struct Netclode_V1_CopilotStatusResponse: Sendable {
 
   /// GitHub Copilot authentication status
   public var auth: Netclode_V1_CopilotAuthStatus {
-    get {return _auth ?? Netclode_V1_CopilotAuthStatus()}
+    get {_auth ?? Netclode_V1_CopilotAuthStatus()}
     set {_auth = newValue}
   }
   /// Returns true if `auth` has been explicitly set.
-  public var hasAuth: Bool {return self._auth != nil}
+  public var hasAuth: Bool {self._auth != nil}
   /// Clears the value of `auth`. Subsequent reads from it will return its default value.
   public mutating func clearAuth() {self._auth = nil}
 
   /// Premium request quota (only if authenticated)
   public var quota: Netclode_V1_CopilotPremiumQuota {
-    get {return _quota ?? Netclode_V1_CopilotPremiumQuota()}
+    get {_quota ?? Netclode_V1_CopilotPremiumQuota()}
     set {_quota = newValue}
   }
   /// Returns true if `quota` has been explicitly set.
-  public var hasQuota: Bool {return self._quota != nil}
+  public var hasQuota: Bool {self._quota != nil}
   /// Clears the value of `quota`. Subsequent reads from it will return its default value.
   public mutating func clearQuota() {self._quota = nil}
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1566,6 +1783,127 @@ public struct Netclode_V1_CopilotStatusResponse: Sendable {
   fileprivate var _requestID: String? = nil
 }
 
+public struct Netclode_V1_CodexAuthStartedResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var verificationUri: String = String()
+
+  public var verificationUriComplete: String {
+    get {_verificationUriComplete ?? String()}
+    set {_verificationUriComplete = newValue}
+  }
+  /// Returns true if `verificationUriComplete` has been explicitly set.
+  public var hasVerificationUriComplete: Bool {self._verificationUriComplete != nil}
+  /// Clears the value of `verificationUriComplete`. Subsequent reads from it will return its default value.
+  public mutating func clearVerificationUriComplete() {self._verificationUriComplete = nil}
+
+  public var userCode: String = String()
+
+  public var intervalSeconds: Int32 = 0
+
+  public var expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_expiresAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_expiresAt = newValue}
+  }
+  /// Returns true if `expiresAt` has been explicitly set.
+  public var hasExpiresAt: Bool {self._expiresAt != nil}
+  /// Clears the value of `expiresAt`. Subsequent reads from it will return its default value.
+  public mutating func clearExpiresAt() {self._expiresAt = nil}
+
+  public var requestID: String {
+    get {_requestID ?? String()}
+    set {_requestID = newValue}
+  }
+  /// Returns true if `requestID` has been explicitly set.
+  public var hasRequestID: Bool {self._requestID != nil}
+  /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
+  public mutating func clearRequestID() {self._requestID = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _verificationUriComplete: String? = nil
+  fileprivate var _expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+  fileprivate var _requestID: String? = nil
+}
+
+public struct Netclode_V1_CodexAuthStatusResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var state: Netclode_V1_CodexAuthState = .unspecified
+
+  public var accountID: String {
+    get {_accountID ?? String()}
+    set {_accountID = newValue}
+  }
+  /// Returns true if `accountID` has been explicitly set.
+  public var hasAccountID: Bool {self._accountID != nil}
+  /// Clears the value of `accountID`. Subsequent reads from it will return its default value.
+  public mutating func clearAccountID() {self._accountID = nil}
+
+  public var expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_expiresAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_expiresAt = newValue}
+  }
+  /// Returns true if `expiresAt` has been explicitly set.
+  public var hasExpiresAt: Bool {self._expiresAt != nil}
+  /// Clears the value of `expiresAt`. Subsequent reads from it will return its default value.
+  public mutating func clearExpiresAt() {self._expiresAt = nil}
+
+  public var error: String {
+    get {_error ?? String()}
+    set {_error = newValue}
+  }
+  /// Returns true if `error` has been explicitly set.
+  public var hasError: Bool {self._error != nil}
+  /// Clears the value of `error`. Subsequent reads from it will return its default value.
+  public mutating func clearError() {self._error = nil}
+
+  public var requestID: String {
+    get {_requestID ?? String()}
+    set {_requestID = newValue}
+  }
+  /// Returns true if `requestID` has been explicitly set.
+  public var hasRequestID: Bool {self._requestID != nil}
+  /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
+  public mutating func clearRequestID() {self._requestID = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _accountID: String? = nil
+  fileprivate var _expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+  fileprivate var _error: String? = nil
+  fileprivate var _requestID: String? = nil
+}
+
+public struct Netclode_V1_CodexAuthLoggedOutResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var requestID: String {
+    get {_requestID ?? String()}
+    set {_requestID = newValue}
+  }
+  /// Returns true if `requestID` has been explicitly set.
+  public var hasRequestID: Bool {self._requestID != nil}
+  /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
+  public mutating func clearRequestID() {self._requestID = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _requestID: String? = nil
+}
+
 /// SnapshotCreatedResponse is pushed to clients when an auto-snapshot is created after a turn.
 public struct Netclode_V1_SnapshotCreatedResponse: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
@@ -1575,11 +1913,11 @@ public struct Netclode_V1_SnapshotCreatedResponse: Sendable {
   public var sessionID: String = String()
 
   public var snapshot: Netclode_V1_Snapshot {
-    get {return _snapshot ?? Netclode_V1_Snapshot()}
+    get {_snapshot ?? Netclode_V1_Snapshot()}
     set {_snapshot = newValue}
   }
   /// Returns true if `snapshot` has been explicitly set.
-  public var hasSnapshot: Bool {return self._snapshot != nil}
+  public var hasSnapshot: Bool {self._snapshot != nil}
   /// Clears the value of `snapshot`. Subsequent reads from it will return its default value.
   public mutating func clearSnapshot() {self._snapshot = nil}
 
@@ -1601,11 +1939,11 @@ public struct Netclode_V1_SnapshotListResponse: Sendable {
   public var snapshots: [Netclode_V1_Snapshot] = []
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1630,11 +1968,11 @@ public struct Netclode_V1_SnapshotRestoredResponse: Sendable {
   public var messagesRestored: Int32 = 0
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1657,11 +1995,11 @@ public struct Netclode_V1_RepoAccessUpdatedResponse: Sendable {
   public var repoAccess: Netclode_V1_RepoAccess = .unspecified
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1692,11 +2030,11 @@ public struct Netclode_V1_ResourceLimitsResponse: Sendable {
   public var defaultMemoryMb: Int32 = 0
 
   public var requestID: String {
-    get {return _requestID ?? String()}
+    get {_requestID ?? String()}
     set {_requestID = newValue}
   }
   /// Returns true if `requestID` has been explicitly set.
-  public var hasRequestID: Bool {return self._requestID != nil}
+  public var hasRequestID: Bool {self._requestID != nil}
   /// Clears the value of `requestID`. Subsequent reads from it will return its default value.
   public mutating func clearRequestID() {self._requestID = nil}
 
@@ -1711,9 +2049,13 @@ public struct Netclode_V1_ResourceLimitsResponse: Sendable {
 
 fileprivate let _protobuf_package = "netclode.v1"
 
+extension Netclode_V1_CodexAuthState: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_AUTH_STATE_UNSPECIFIED\0\u{1}CODEX_AUTH_STATE_UNAUTHENTICATED\0\u{1}CODEX_AUTH_STATE_PENDING\0\u{1}CODEX_AUTH_STATE_READY\0\u{1}CODEX_AUTH_STATE_ERROR\0")
+}
+
 extension Netclode_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}create_session\0\u{3}list_sessions\0\u{3}open_session\0\u{3}resume_session\0\u{3}pause_session\0\u{3}delete_session\0\u{3}delete_all_sessions\0\u{3}send_prompt\0\u{3}interrupt_prompt\0\u{3}terminal_input\0\u{3}terminal_resize\0\u{3}expose_port\0\u{1}sync\0\u{3}list_github_repos\0\u{3}git_status\0\u{3}git_diff\0\u{3}list_models\0\u{3}get_copilot_status\0\u{3}list_snapshots\0\u{3}restore_snapshot\0\u{3}update_repo_access\0\u{3}get_resource_limits\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}create_session\0\u{3}list_sessions\0\u{3}open_session\0\u{3}resume_session\0\u{3}pause_session\0\u{3}delete_session\0\u{3}delete_all_sessions\0\u{3}send_prompt\0\u{3}interrupt_prompt\0\u{3}terminal_input\0\u{3}terminal_resize\0\u{3}expose_port\0\u{1}sync\0\u{3}list_github_repos\0\u{3}git_status\0\u{3}git_diff\0\u{3}list_models\0\u{3}get_copilot_status\0\u{3}list_snapshots\0\u{3}restore_snapshot\0\u{3}update_repo_access\0\u{3}get_resource_limits\0\u{3}codex_auth_start\0\u{3}codex_auth_status\0\u{3}codex_auth_logout\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2007,6 +2349,45 @@ extension Netclode_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._Messa
           self.message = .getResourceLimits(v)
         }
       }()
+      case 23: try {
+        var v: Netclode_V1_CodexAuthStartRequest?
+        var hadOneofValue = false
+        if let current = self.message {
+          hadOneofValue = true
+          if case .codexAuthStart(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.message = .codexAuthStart(v)
+        }
+      }()
+      case 24: try {
+        var v: Netclode_V1_CodexAuthStatusRequest?
+        var hadOneofValue = false
+        if let current = self.message {
+          hadOneofValue = true
+          if case .codexAuthStatus(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.message = .codexAuthStatus(v)
+        }
+      }()
+      case 25: try {
+        var v: Netclode_V1_CodexAuthLogoutRequest?
+        var hadOneofValue = false
+        if let current = self.message {
+          hadOneofValue = true
+          if case .codexAuthLogout(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.message = .codexAuthLogout(v)
+        }
+      }()
       default: break
       }
     }
@@ -2106,6 +2487,18 @@ extension Netclode_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._Messa
       guard case .getResourceLimits(let v)? = self.message else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 22)
     }()
+    case .codexAuthStart?: try {
+      guard case .codexAuthStart(let v)? = self.message else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 23)
+    }()
+    case .codexAuthStatus?: try {
+      guard case .codexAuthStatus(let v)? = self.message else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 24)
+    }()
+    case .codexAuthLogout?: try {
+      guard case .codexAuthLogout(let v)? = self.message else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 25)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -2120,7 +2513,7 @@ extension Netclode_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._Messa
 
 extension Netclode_V1_ServerMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ServerMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_created\0\u{3}session_updated\0\u{3}session_deleted\0\u{3}sessions_deleted_all\0\u{3}session_list\0\u{3}session_state\0\u{3}sync_response\0\u{3}stream_entry\0\u{4}\u{5}port_exposed\0\u{3}github_repos\0\u{3}git_status\0\u{3}git_diff\0\u{1}error\0\u{1}models\0\u{3}copilot_status\0\u{3}snapshot_created\0\u{3}snapshot_list\0\u{3}snapshot_restored\0\u{3}repo_access_updated\0\u{3}resource_limits\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_created\0\u{3}session_updated\0\u{3}session_deleted\0\u{3}sessions_deleted_all\0\u{3}session_list\0\u{3}session_state\0\u{3}sync_response\0\u{3}stream_entry\0\u{4}\u{5}port_exposed\0\u{3}github_repos\0\u{3}git_status\0\u{3}git_diff\0\u{1}error\0\u{1}models\0\u{3}copilot_status\0\u{3}snapshot_created\0\u{3}snapshot_list\0\u{3}snapshot_restored\0\u{3}repo_access_updated\0\u{3}resource_limits\0\u{3}codex_auth_started\0\u{3}codex_auth_status\0\u{3}codex_auth_logged_out\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2388,6 +2781,45 @@ extension Netclode_V1_ServerMessage: SwiftProtobuf.Message, SwiftProtobuf._Messa
           self.message = .resourceLimits(v)
         }
       }()
+      case 25: try {
+        var v: Netclode_V1_CodexAuthStartedResponse?
+        var hadOneofValue = false
+        if let current = self.message {
+          hadOneofValue = true
+          if case .codexAuthStarted(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.message = .codexAuthStarted(v)
+        }
+      }()
+      case 26: try {
+        var v: Netclode_V1_CodexAuthStatusResponse?
+        var hadOneofValue = false
+        if let current = self.message {
+          hadOneofValue = true
+          if case .codexAuthStatus(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.message = .codexAuthStatus(v)
+        }
+      }()
+      case 27: try {
+        var v: Netclode_V1_CodexAuthLoggedOutResponse?
+        var hadOneofValue = false
+        if let current = self.message {
+          hadOneofValue = true
+          if case .codexAuthLoggedOut(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.message = .codexAuthLoggedOut(v)
+        }
+      }()
       default: break
       }
     }
@@ -2479,6 +2911,18 @@ extension Netclode_V1_ServerMessage: SwiftProtobuf.Message, SwiftProtobuf._Messa
       guard case .resourceLimits(let v)? = self.message else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 24)
     }()
+    case .codexAuthStarted?: try {
+      guard case .codexAuthStarted(let v)? = self.message else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 25)
+    }()
+    case .codexAuthStatus?: try {
+      guard case .codexAuthStatus(let v)? = self.message else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 26)
+    }()
+    case .codexAuthLoggedOut?: try {
+      guard case .codexAuthLoggedOut(let v)? = self.message else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 27)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -2521,9 +2965,58 @@ extension Netclode_V1_NetworkConfig: SwiftProtobuf.Message, SwiftProtobuf._Messa
   }
 }
 
+extension Netclode_V1_CodexOAuthTokens: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexOAuthTokens"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}access_token\0\u{3}id_token\0\u{3}refresh_token\0\u{3}expires_at\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.accessToken) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.idToken) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.refreshToken) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._expiresAt) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.accessToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.accessToken, fieldNumber: 1)
+    }
+    if !self.idToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.idToken, fieldNumber: 2)
+    }
+    if !self.refreshToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.refreshToken, fieldNumber: 3)
+    }
+    try { if let v = self._expiresAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Netclode_V1_CodexOAuthTokens, rhs: Netclode_V1_CodexOAuthTokens) -> Bool {
+    if lhs.accessToken != rhs.accessToken {return false}
+    if lhs.idToken != rhs.idToken {return false}
+    if lhs.refreshToken != rhs.refreshToken {return false}
+    if lhs._expiresAt != rhs._expiresAt {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 extension Netclode_V1_CreateSessionRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CreateSessionRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0\u{1}name\0\u{1}repos\0\u{3}repo_access\0\u{3}initial_prompt\0\u{3}sdk_type\0\u{1}model\0\u{3}copilot_backend\0\u{3}network_config\0\u{1}resources\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0\u{1}name\0\u{1}repos\0\u{3}repo_access\0\u{3}initial_prompt\0\u{3}sdk_type\0\u{1}model\0\u{3}copilot_backend\0\u{3}network_config\0\u{1}resources\0\u{3}codex_oauth_tokens\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2541,6 +3034,7 @@ extension Netclode_V1_CreateSessionRequest: SwiftProtobuf.Message, SwiftProtobuf
       case 8: try { try decoder.decodeSingularEnumField(value: &self._copilotBackend) }()
       case 9: try { try decoder.decodeSingularMessageField(value: &self._networkConfig) }()
       case 10: try { try decoder.decodeSingularMessageField(value: &self._resources) }()
+      case 11: try { try decoder.decodeSingularMessageField(value: &self._codexOauthTokens) }()
       default: break
       }
     }
@@ -2581,6 +3075,9 @@ extension Netclode_V1_CreateSessionRequest: SwiftProtobuf.Message, SwiftProtobuf
     try { if let v = self._resources {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
     } }()
+    try { if let v = self._codexOauthTokens {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2595,6 +3092,7 @@ extension Netclode_V1_CreateSessionRequest: SwiftProtobuf.Message, SwiftProtobuf
     if lhs._copilotBackend != rhs._copilotBackend {return false}
     if lhs._networkConfig != rhs._networkConfig {return false}
     if lhs._resources != rhs._resources {return false}
+    if lhs._codexOauthTokens != rhs._codexOauthTokens {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3207,7 +3705,7 @@ extension Netclode_V1_GitDiffRequest: SwiftProtobuf.Message, SwiftProtobuf._Mess
 
 extension Netclode_V1_ListModelsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ListModelsRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0\u{3}sdk_type\0\u{3}copilot_backend\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0\u{3}sdk_type\0\u{3}copilot_backend\0\u{3}codex_oauth_available\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3218,6 +3716,7 @@ extension Netclode_V1_ListModelsRequest: SwiftProtobuf.Message, SwiftProtobuf._M
       case 1: try { try decoder.decodeSingularStringField(value: &self._requestID) }()
       case 2: try { try decoder.decodeSingularEnumField(value: &self.sdkType) }()
       case 3: try { try decoder.decodeSingularEnumField(value: &self._copilotBackend) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self._codexOauthAvailable) }()
       default: break
       }
     }
@@ -3237,6 +3736,9 @@ extension Netclode_V1_ListModelsRequest: SwiftProtobuf.Message, SwiftProtobuf._M
     try { if let v = self._copilotBackend {
       try visitor.visitSingularEnumField(value: v, fieldNumber: 3)
     } }()
+    try { if let v = self._codexOauthAvailable {
+      try visitor.visitSingularBoolField(value: v, fieldNumber: 4)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -3244,6 +3746,7 @@ extension Netclode_V1_ListModelsRequest: SwiftProtobuf.Message, SwiftProtobuf._M
     if lhs._requestID != rhs._requestID {return false}
     if lhs.sdkType != rhs.sdkType {return false}
     if lhs._copilotBackend != rhs._copilotBackend {return false}
+    if lhs._codexOauthAvailable != rhs._codexOauthAvailable {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3438,6 +3941,108 @@ extension Netclode_V1_GetResourceLimitsRequest: SwiftProtobuf.Message, SwiftProt
   }
 
   public static func ==(lhs: Netclode_V1_GetResourceLimitsRequest, rhs: Netclode_V1_GetResourceLimitsRequest) -> Bool {
+    if lhs._requestID != rhs._requestID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Netclode_V1_CodexAuthStartRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexAuthStartRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self._requestID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._requestID {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 1)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Netclode_V1_CodexAuthStartRequest, rhs: Netclode_V1_CodexAuthStartRequest) -> Bool {
+    if lhs._requestID != rhs._requestID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Netclode_V1_CodexAuthStatusRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexAuthStatusRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self._requestID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._requestID {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 1)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Netclode_V1_CodexAuthStatusRequest, rhs: Netclode_V1_CodexAuthStatusRequest) -> Bool {
+    if lhs._requestID != rhs._requestID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Netclode_V1_CodexAuthLogoutRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexAuthLogoutRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self._requestID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._requestID {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 1)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Netclode_V1_CodexAuthLogoutRequest, rhs: Netclode_V1_CodexAuthLogoutRequest) -> Bool {
     if lhs._requestID != rhs._requestID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
@@ -4157,6 +4762,153 @@ extension Netclode_V1_CopilotStatusResponse: SwiftProtobuf.Message, SwiftProtobu
   public static func ==(lhs: Netclode_V1_CopilotStatusResponse, rhs: Netclode_V1_CopilotStatusResponse) -> Bool {
     if lhs._auth != rhs._auth {return false}
     if lhs._quota != rhs._quota {return false}
+    if lhs._requestID != rhs._requestID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Netclode_V1_CodexAuthStartedResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexAuthStartedResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}verification_uri\0\u{3}verification_uri_complete\0\u{3}user_code\0\u{3}interval_seconds\0\u{3}expires_at\0\u{3}request_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.verificationUri) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self._verificationUriComplete) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.userCode) }()
+      case 4: try { try decoder.decodeSingularInt32Field(value: &self.intervalSeconds) }()
+      case 5: try { try decoder.decodeSingularMessageField(value: &self._expiresAt) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self._requestID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.verificationUri.isEmpty {
+      try visitor.visitSingularStringField(value: self.verificationUri, fieldNumber: 1)
+    }
+    try { if let v = self._verificationUriComplete {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 2)
+    } }()
+    if !self.userCode.isEmpty {
+      try visitor.visitSingularStringField(value: self.userCode, fieldNumber: 3)
+    }
+    if self.intervalSeconds != 0 {
+      try visitor.visitSingularInt32Field(value: self.intervalSeconds, fieldNumber: 4)
+    }
+    try { if let v = self._expiresAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+    } }()
+    try { if let v = self._requestID {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 6)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Netclode_V1_CodexAuthStartedResponse, rhs: Netclode_V1_CodexAuthStartedResponse) -> Bool {
+    if lhs.verificationUri != rhs.verificationUri {return false}
+    if lhs._verificationUriComplete != rhs._verificationUriComplete {return false}
+    if lhs.userCode != rhs.userCode {return false}
+    if lhs.intervalSeconds != rhs.intervalSeconds {return false}
+    if lhs._expiresAt != rhs._expiresAt {return false}
+    if lhs._requestID != rhs._requestID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Netclode_V1_CodexAuthStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexAuthStatusResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}state\0\u{3}account_id\0\u{3}expires_at\0\u{1}error\0\u{3}request_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.state) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self._accountID) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._expiresAt) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self._error) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self._requestID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.state != .unspecified {
+      try visitor.visitSingularEnumField(value: self.state, fieldNumber: 1)
+    }
+    try { if let v = self._accountID {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._expiresAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._error {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 4)
+    } }()
+    try { if let v = self._requestID {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 5)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Netclode_V1_CodexAuthStatusResponse, rhs: Netclode_V1_CodexAuthStatusResponse) -> Bool {
+    if lhs.state != rhs.state {return false}
+    if lhs._accountID != rhs._accountID {return false}
+    if lhs._expiresAt != rhs._expiresAt {return false}
+    if lhs._error != rhs._error {return false}
+    if lhs._requestID != rhs._requestID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Netclode_V1_CodexAuthLoggedOutResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexAuthLoggedOutResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self._requestID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._requestID {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 1)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Netclode_V1_CodexAuthLoggedOutResponse, rhs: Netclode_V1_CodexAuthLoggedOutResponse) -> Bool {
     if lhs._requestID != rhs._requestID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true

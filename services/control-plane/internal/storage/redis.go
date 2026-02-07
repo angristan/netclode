@@ -2,6 +2,10 @@ package storage
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -15,7 +19,10 @@ import (
 )
 
 const (
-	keySessionsAll = "sessions:all"
+	keySessionsAll        = "sessions:all"
+	keyCodexOAuthGlobal   = "codex:oauth"
+	fieldCodexOAuth       = "codexOAuthEncV1"
+	fieldCodexOAuthGlobal = "oauthEncV1"
 )
 
 func snapshotsSetKey(sessionID string) string {
@@ -107,6 +114,9 @@ func (r *RedisStorage) SaveSession(ctx context.Context, s *pb.Session) error {
 	if s.Model != nil {
 		pipe.HSet(ctx, sessionKey(s.Id), "model", *s.Model)
 	}
+	if s.CopilotBackend != nil {
+		pipe.HSet(ctx, sessionKey(s.Id), "copilotBackend", s.CopilotBackend.String())
+	}
 
 	_, err := pipe.Exec(ctx)
 	return err
@@ -154,6 +164,12 @@ func (r *RedisStorage) GetSession(ctx context.Context, id string) (*pb.Session, 
 	if model, ok := data["model"]; ok && model != "" {
 		session.Model = &model
 	}
+	if backendStr, ok := data["copilotBackend"]; ok && backendStr != "" {
+		backend := parseCopilotBackend(backendStr)
+		if backend != pb.CopilotBackend_COPILOT_BACKEND_UNSPECIFIED {
+			session.CopilotBackend = &backend
+		}
+	}
 
 	return session, nil
 }
@@ -187,8 +203,23 @@ func parseSdkType(s string) pb.SdkType {
 		return pb.SdkType_SDK_TYPE_CLAUDE
 	case "SDK_TYPE_OPENCODE":
 		return pb.SdkType_SDK_TYPE_OPENCODE
+	case "SDK_TYPE_COPILOT":
+		return pb.SdkType_SDK_TYPE_COPILOT
+	case "SDK_TYPE_CODEX":
+		return pb.SdkType_SDK_TYPE_CODEX
 	default:
 		return pb.SdkType_SDK_TYPE_UNSPECIFIED
+	}
+}
+
+func parseCopilotBackend(s string) pb.CopilotBackend {
+	switch s {
+	case "COPILOT_BACKEND_GITHUB":
+		return pb.CopilotBackend_COPILOT_BACKEND_GITHUB
+	case "COPILOT_BACKEND_ANTHROPIC":
+		return pb.CopilotBackend_COPILOT_BACKEND_ANTHROPIC
+	default:
+		return pb.CopilotBackend_COPILOT_BACKEND_UNSPECIFIED
 	}
 }
 
@@ -240,24 +271,37 @@ func (r *RedisStorage) GetAllSessions(ctx context.Context) ([]*pb.Session, error
 		if t, err := time.Parse(time.RFC3339, data["createdAt"]); err == nil {
 			session.CreatedAt = timestamppb.New(t)
 		}
-	if t, err := time.Parse(time.RFC3339, data["lastActiveAt"]); err == nil {
-		session.LastActiveAt = timestamppb.New(t)
-	}
-	if reposJSON, ok := data["repos"]; ok && reposJSON != "" {
-		var repos []string
-		if err := json.Unmarshal([]byte(reposJSON), &repos); err == nil {
-			session.Repos = repos
-		} else {
-			slog.Warn("Failed to decode repos for session", "sessionID", id, "error", err)
+		if t, err := time.Parse(time.RFC3339, data["lastActiveAt"]); err == nil {
+			session.LastActiveAt = timestamppb.New(t)
 		}
-	}
-	if repoAccessStr, ok := data["repoAccess"]; ok && repoAccessStr != "" {
-		repoAccess := parseRepoAccess(repoAccessStr)
-		if repoAccess != pb.RepoAccess_REPO_ACCESS_UNSPECIFIED {
-			session.RepoAccess = &repoAccess
+		if reposJSON, ok := data["repos"]; ok && reposJSON != "" {
+			var repos []string
+			if err := json.Unmarshal([]byte(reposJSON), &repos); err == nil {
+				session.Repos = repos
+			} else {
+				slog.Warn("Failed to decode repos for session", "sessionID", id, "error", err)
+			}
 		}
-	}
-	sessions = append(sessions, session)
+		if repoAccessStr, ok := data["repoAccess"]; ok && repoAccessStr != "" {
+			repoAccess := parseRepoAccess(repoAccessStr)
+			if repoAccess != pb.RepoAccess_REPO_ACCESS_UNSPECIFIED {
+				session.RepoAccess = &repoAccess
+			}
+		}
+		if sdkTypeStr, ok := data["sdkType"]; ok && sdkTypeStr != "" {
+			sdkType := parseSdkType(sdkTypeStr)
+			session.SdkType = &sdkType
+		}
+		if model, ok := data["model"]; ok && model != "" {
+			session.Model = &model
+		}
+		if backendStr, ok := data["copilotBackend"]; ok && backendStr != "" {
+			backend := parseCopilotBackend(backendStr)
+			if backend != pb.CopilotBackend_COPILOT_BACKEND_UNSPECIFIED {
+				session.CopilotBackend = &backend
+			}
+		}
+		sessions = append(sessions, session)
 	}
 
 	return sessions, nil
@@ -271,6 +315,148 @@ func (r *RedisStorage) UpdateSessionStatus(ctx context.Context, id string, statu
 // UpdateSessionField updates a single field of a session.
 func (r *RedisStorage) UpdateSessionField(ctx context.Context, id, field, value string) error {
 	return r.client.HSet(ctx, sessionKey(id), field, value).Err()
+}
+
+// SaveSessionCodexOAuth stores encrypted Codex OAuth tokens for a session.
+func (r *RedisStorage) SaveSessionCodexOAuth(ctx context.Context, sessionID string, data *CodexOAuthSessionData) error {
+	if data == nil {
+		return fmt.Errorf("codex oauth data is required")
+	}
+	if data.UpdatedAt.IsZero() {
+		data.UpdatedAt = time.Now().UTC()
+	}
+
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("marshal codex oauth data: %w", err)
+	}
+	encrypted, err := encryptWithKey(raw, r.config.CodexOAuthEncryptionKey)
+	if err != nil {
+		return fmt.Errorf("encrypt codex oauth data: %w", err)
+	}
+
+	return r.client.HSet(ctx, sessionKey(sessionID), fieldCodexOAuth, encrypted).Err()
+}
+
+// GetSessionCodexOAuth retrieves and decrypts Codex OAuth tokens for a session.
+func (r *RedisStorage) GetSessionCodexOAuth(ctx context.Context, sessionID string) (*CodexOAuthSessionData, error) {
+	encrypted, err := r.client.HGet(ctx, sessionKey(sessionID), fieldCodexOAuth).Result()
+	if err == redis.Nil {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	raw, err := decryptWithKey(encrypted, r.config.CodexOAuthEncryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt codex oauth data: %w", err)
+	}
+
+	var data CodexOAuthSessionData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, fmt.Errorf("unmarshal codex oauth data: %w", err)
+	}
+	return &data, nil
+}
+
+// DeleteSessionCodexOAuth removes stored Codex OAuth tokens for a session.
+func (r *RedisStorage) DeleteSessionCodexOAuth(ctx context.Context, sessionID string) error {
+	return r.client.HDel(ctx, sessionKey(sessionID), fieldCodexOAuth).Err()
+}
+
+// SaveCodexOAuth stores encrypted global Codex OAuth credentials.
+func (r *RedisStorage) SaveCodexOAuth(ctx context.Context, data *CodexOAuthSessionData) error {
+	if data == nil {
+		return fmt.Errorf("codex oauth data is required")
+	}
+	if data.UpdatedAt.IsZero() {
+		data.UpdatedAt = time.Now().UTC()
+	}
+
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("marshal codex oauth data: %w", err)
+	}
+	encrypted, err := encryptWithKey(raw, r.config.CodexOAuthEncryptionKey)
+	if err != nil {
+		return fmt.Errorf("encrypt codex oauth data: %w", err)
+	}
+
+	return r.client.HSet(ctx, keyCodexOAuthGlobal, fieldCodexOAuthGlobal, encrypted).Err()
+}
+
+// GetCodexOAuth retrieves and decrypts global Codex OAuth credentials.
+func (r *RedisStorage) GetCodexOAuth(ctx context.Context) (*CodexOAuthSessionData, error) {
+	encrypted, err := r.client.HGet(ctx, keyCodexOAuthGlobal, fieldCodexOAuthGlobal).Result()
+	if err == redis.Nil {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	raw, err := decryptWithKey(encrypted, r.config.CodexOAuthEncryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt codex oauth data: %w", err)
+	}
+
+	var data CodexOAuthSessionData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, fmt.Errorf("unmarshal codex oauth data: %w", err)
+	}
+	return &data, nil
+}
+
+// DeleteCodexOAuth removes global Codex OAuth credentials.
+func (r *RedisStorage) DeleteCodexOAuth(ctx context.Context) error {
+	return r.client.HDel(ctx, keyCodexOAuthGlobal, fieldCodexOAuthGlobal).Err()
+}
+
+func encryptWithKey(plaintext []byte, key []byte) (string, error) {
+	if len(key) != 32 {
+		return "", fmt.Errorf("CODEX_OAUTH_ENCRYPTION_KEY_B64 must decode to 32 bytes")
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
+	packed := append(nonce, ciphertext...)
+	return base64.StdEncoding.EncodeToString(packed), nil
+}
+
+func decryptWithKey(encoded string, key []byte) ([]byte, error) {
+	if len(key) != 32 {
+		return nil, fmt.Errorf("CODEX_OAUTH_ENCRYPTION_KEY_B64 must decode to 32 bytes")
+	}
+	packed, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonceSize := gcm.NonceSize()
+	if len(packed) < nonceSize {
+		return nil, fmt.Errorf("invalid ciphertext")
+	}
+	nonce := packed[:nonceSize]
+	ciphertext := packed[nonceSize:]
+	return gcm.Open(nil, nonce, ciphertext, nil)
 }
 
 // SetRestoreSnapshotID stores the snapshot ID to restore from (persisted for crash recovery).
@@ -318,6 +504,9 @@ func (r *RedisStorage) DeleteSession(ctx context.Context, id string) error {
 	// First delete all snapshots
 	if err := r.DeleteAllSnapshots(ctx, id); err != nil {
 		slog.Warn("failed to delete snapshots during session delete", "sessionID", id, "error", err)
+	}
+	if err := r.DeleteSessionCodexOAuth(ctx, id); err != nil {
+		slog.Warn("failed to delete codex oauth data during session delete", "sessionID", id, "error", err)
 	}
 
 	pipe := r.client.TxPipeline()

@@ -59,6 +59,7 @@ COPY services/agent services/agent
 # Install agent dependencies
 WORKDIR /build/services/agent
 RUN --mount=type=cache,target=/root/.npm npm install
+RUN npm rebuild node-pty --build-from-source
 
 # Bundle agent
 RUN esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/agent.js

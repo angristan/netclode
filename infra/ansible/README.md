@@ -59,10 +59,14 @@ Required entries:
 ```bash
 # .env file
 
-# LLM provider (at least one required)
-ANTHROPIC_API_KEY=sk-ant-api03-xxx
+# LLM credentials (choose one path)
+# Path A: API key(s)
+# ANTHROPIC_API_KEY=sk-ant-api03-xxx
 # OPENAI_API_KEY=sk-xxx
 # MISTRAL_API_KEY=xxx
+#
+# Optional: required only for Codex OAuth session storage encryption
+# CODEX_OAUTH_ENCRYPTION_KEY_B64=$(openssl rand -base64 32)
 
 # Tailscale (OAuth client for k8s ingress)
 TS_OAUTH_CLIENT_ID=your-oauth-client-id
@@ -161,6 +165,20 @@ ansible-playbook playbooks/site.yaml --skip-tags k8s-manifests
 
 # Deploy only k8s manifests (fast updates)
 ansible-playbook playbooks/k8s-only.yaml
+
+# Deploy only k8s manifests with custom images
+ansible-playbook playbooks/k8s-only.yaml \
+  -e control_plane_image=ghcr.io/<owner>/netclode-control-plane:<tag> \
+  -e agent_image=ghcr.io/<owner>/netclode-agent:<tag>
+
+# Deploy private custom images (adds/uses imagePullSecret)
+ansible-playbook playbooks/k8s-only.yaml \
+  -e control_plane_image=ghcr.io/<owner>/netclode-control-plane:<tag> \
+  -e agent_image=ghcr.io/<owner>/netclode-agent:<tag> \
+  -e image_pull_secret_name=ghcr-pull-secret \
+  -e image_pull_secret_registry=ghcr.io \
+  -e image_pull_secret_username=<github-username> \
+  -e image_pull_secret_password=<github-token-with-read-packages>
 
 # Install/update MinIO only
 MINIO_ENABLED=true ansible-playbook playbooks/site.yaml --tags "nftables,minio"
@@ -421,7 +439,6 @@ SDK → auth-proxy (localhost:8080) → secret-proxy (external) → internet
 | `OPENCODE_API_KEY` | `api.opencode.ai`, `openrouter.ai`, `api.openrouter.ai` |
 | `ZAI_API_KEY` | `open.bigmodel.cn` |
 | `GITHUB_COPILOT_TOKEN` | `api.github.com`, `copilot-proxy.githubusercontent.com` |
-| `CODEX_ACCESS_TOKEN` | `api.openai.com` |
 
 **Not proxied:** `GITHUB_TOKEN` (used by git credential helper, not HTTP headers)
 

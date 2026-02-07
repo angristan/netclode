@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"time"
 
-	"github.com/angristan/netclode/clients/cli/internal/codex"
+	"github.com/angristan/netclode/clients/cli/internal/client"
+	pb "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -22,59 +24,128 @@ var authCodexCmd = &cobra.Command{
 This command will:
 1. Display a verification URL and code
 2. Wait for you to authorize in your browser
-3. Output tokens to add to your .env file
-
-The tokens are then deployed to production via Ansible.`,
+3. Complete authentication on the backend`,
 	RunE: runAuthCodex,
+}
+
+var authCodexStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show backend Codex OAuth status",
+	RunE:  runAuthCodexStatus,
+}
+
+var authCodexLogoutCmd = &cobra.Command{
+	Use:   "logout",
+	Short: "Delete backend Codex OAuth tokens",
+	RunE:  runAuthCodexLogout,
 }
 
 func init() {
 	rootCmd.AddCommand(authCmd)
 	authCmd.AddCommand(authCodexCmd)
+	authCodexCmd.AddCommand(authCodexStatusCmd)
+	authCodexCmd.AddCommand(authCodexLogoutCmd)
 }
 
 func runAuthCodex(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	c := client.New(getServerURL())
+
 	fmt.Println("Codex Authentication (ChatGPT OAuth)")
 	fmt.Println("=====================================")
 	fmt.Println()
 
-	// Step 1: Request device code
 	fmt.Println("Requesting device code...")
-	dc, err := codex.RequestDeviceCode()
+	started, err := c.CodexAuthStart(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to request device code: %w", err)
+		return fmt.Errorf("failed to start backend codex auth: %w", err)
 	}
 
 	fmt.Println()
-	fmt.Printf("Visit:  %s\n", dc.VerificationURL)
-	fmt.Printf("Code:   %s\n", dc.UserCode)
+	fmt.Printf("Visit:  %s\n", started.VerificationUri)
+	fmt.Printf("Code:   %s\n", started.UserCode)
 	fmt.Println()
-	fmt.Println("Waiting for authorization (15 minute timeout)...")
+	fmt.Println("Waiting for backend authentication to complete...")
 
-	// Step 2: Poll for authorization
-	ce, err := codex.PollForAuthorization(dc, 15*time.Minute)
-	if err != nil {
-		return fmt.Errorf("authorization failed: %w", err)
+	interval := time.Duration(started.IntervalSeconds) * time.Second
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+	deadline := time.Now().Add(15 * time.Minute)
+	if started.ExpiresAt != nil {
+		deadline = started.ExpiresAt.AsTime()
 	}
 
-	fmt.Println("Authorization received, exchanging for tokens...")
+	for time.Now().Before(deadline) {
+		status, err := c.CodexAuthStatus(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to check auth status: %w", err)
+		}
 
-	// Step 3: Exchange for tokens
-	tokens, err := codex.ExchangeCodeForTokens(ce)
-	if err != nil {
-		return fmt.Errorf("token exchange failed: %w", err)
+		switch status.State {
+		case pb.CodexAuthState_CODEX_AUTH_STATE_READY:
+			fmt.Println()
+			fmt.Println("Authentication successful!")
+			if status.AccountId != nil && *status.AccountId != "" {
+				fmt.Printf("Account: %s\n", *status.AccountId)
+			}
+			if status.ExpiresAt != nil {
+				fmt.Printf("Token expires at: %s\n", status.ExpiresAt.AsTime().Format(time.RFC3339))
+			}
+			return nil
+		case pb.CodexAuthState_CODEX_AUTH_STATE_ERROR:
+			if status.Error != nil {
+				return fmt.Errorf("authentication failed: %s", *status.Error)
+			}
+			return fmt.Errorf("authentication failed")
+		}
+
+		time.Sleep(interval)
 	}
 
-	fmt.Println()
-	fmt.Println("Authentication successful!")
-	fmt.Println()
-	fmt.Println("Add these to your .env file:")
-	fmt.Println("-----------------------------")
-	fmt.Printf("CODEX_ACCESS_TOKEN=%s\n", tokens.AccessToken)
-	fmt.Printf("CODEX_REFRESH_TOKEN=%s\n", tokens.RefreshToken)
-	fmt.Printf("CODEX_ID_TOKEN=%s\n", tokens.IDToken)
-	fmt.Println()
-	fmt.Println("Then deploy with: cd infra/ansible && DEPLOY_HOST=<host> ansible-playbook playbooks/site.yaml")
+	return fmt.Errorf("authentication timed out")
+}
 
+func runAuthCodexStatus(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	c := client.New(getServerURL())
+
+	status, err := c.CodexAuthStatus(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to read codex oauth status: %w", err)
+	}
+
+	switch status.State {
+	case pb.CodexAuthState_CODEX_AUTH_STATE_READY:
+		fmt.Println("Codex OAuth: authenticated")
+		if status.AccountId != nil && *status.AccountId != "" {
+			fmt.Printf("Account: %s\n", *status.AccountId)
+		}
+		if status.ExpiresAt != nil {
+			fmt.Printf("Expires at: %s\n", status.ExpiresAt.AsTime().Format(time.RFC3339))
+		}
+	case pb.CodexAuthState_CODEX_AUTH_STATE_PENDING:
+		fmt.Println("Codex OAuth: pending authorization")
+		if status.ExpiresAt != nil {
+			fmt.Printf("Pending expires at: %s\n", status.ExpiresAt.AsTime().Format(time.RFC3339))
+		}
+	case pb.CodexAuthState_CODEX_AUTH_STATE_ERROR:
+		fmt.Println("Codex OAuth: error")
+		if status.Error != nil && *status.Error != "" {
+			fmt.Printf("Error: %s\n", *status.Error)
+		}
+	default:
+		fmt.Println("Codex OAuth: not authenticated")
+	}
+	return nil
+}
+
+func runAuthCodexLogout(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	c := client.New(getServerURL())
+	if err := c.CodexAuthLogout(ctx); err != nil {
+		return fmt.Errorf("failed to delete backend codex oauth tokens: %w", err)
+	}
+	fmt.Println("Codex OAuth tokens removed from backend.")
 	return nil
 }

@@ -91,7 +91,17 @@ Use your ChatGPT subscription instead of API credits:
 netclode auth codex
 ```
 
-Opens browser flow and outputs tokens for your `.env`.
+Opens browser flow and stores tokens locally for CLI Codex `:oauth` sessions.
+
+Create OAuth-backed sessions with a Codex `:oauth` model, for example:
+
+```bash
+netclode sessions create --repo owner/repo --sdk codex --model gpt-5-codex:oauth:high
+```
+
+Notes:
+- iOS OAuth login flow is not implemented yet (CLI-first rollout).
+- Control-plane stores refresh tokens encrypted and only sends short-lived access/id tokens to agent sandboxes.
 
 ### Models
 
@@ -110,7 +120,7 @@ Specify SDK and model when creating a session:
 netclode sessions create --repo owner/repo --sdk claude
 netclode sessions create --repo owner/repo --sdk opencode --model anthropic/claude-sonnet-4-5-20250514
 netclode sessions create --repo owner/repo --sdk copilot
-netclode sessions create --repo owner/repo --sdk codex --model codex-mini-latest
+netclode sessions create --repo owner/repo --sdk codex --model gpt-5-codex:oauth:high
 ```
 
 Or use the iOS app model picker.
@@ -124,9 +134,7 @@ Or use the iOS app model picker.
 | `MISTRAL_API_KEY` | OpenCode | Mistral API key |
 | `ZAI_API_KEY` | OpenCode | Z.AI API key (for GLM-4.7 models) |
 | `GITHUB_COPILOT_TOKEN` | Copilot | GitHub PAT with copilot scope |
-| `CODEX_ACCESS_TOKEN` | Codex | ChatGPT OAuth access token |
-| `CODEX_ID_TOKEN` | Codex | ChatGPT OAuth ID token |
-| `CODEX_REFRESH_TOKEN` | Codex | ChatGPT OAuth refresh token |
+| `CODEX_OAUTH_ENCRYPTION_KEY_B64` | Control plane | Base64-encoded 32-byte key for encrypting stored Codex OAuth refresh tokens |
 
 ## Local Models with Ollama
 

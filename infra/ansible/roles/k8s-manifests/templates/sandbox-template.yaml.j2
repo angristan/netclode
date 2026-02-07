@@ -45,6 +45,10 @@ spec:
   podTemplate:
     spec:
       runtimeClassName: kata-clh
+{% if image_pull_secret_name | length > 0 %}
+      imagePullSecrets:
+        - name: {{ image_pull_secret_name }}
+{% endif %}
       initContainers:
         # Fix MTU for Cilium + Kata compatibility
         # Kata VMs don't inherit route MTU from outer namespace, causing fragmentation
@@ -67,7 +71,7 @@ spec:
                 - NET_ADMIN
       containers:
         - name: agent
-          image: ghcr.io/angristan/netclode-agent:latest
+          image: {{ agent_image }}
           imagePullPolicy: Always
           securityContext:
             privileged: true  # See security note above

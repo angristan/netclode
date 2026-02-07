@@ -261,6 +261,66 @@ func TestStreamKey(t *testing.T) {
 	}
 }
 
+func TestSessionCodexOAuthStorage_EncryptedRoundTrip(t *testing.T) {
+	mr, storage := setupTestRedis(t)
+	defer mr.Close()
+	defer storage.Close()
+
+	storage.config.CodexOAuthEncryptionKey = []byte("0123456789abcdef0123456789abcdef")
+
+	ctx := context.Background()
+	sessionID := "oauth-session-1"
+	expiresAt := time.Now().UTC().Add(30 * time.Minute).Truncate(time.Second)
+	data := &CodexOAuthSessionData{
+		AccessToken:  "access-token-123",
+		IdToken:      "id-token-456",
+		RefreshToken: "refresh-token-789",
+		ExpiresAt:    &expiresAt,
+		UpdatedAt:    time.Now().UTC(),
+	}
+
+	if err := storage.SaveSessionCodexOAuth(ctx, sessionID, data); err != nil {
+		t.Fatalf("save codex oauth: %v", err)
+	}
+
+	// Ensure value is encrypted in Redis (not plain JSON/token).
+	rawEncrypted, err := storage.client.HGet(ctx, sessionKey(sessionID), fieldCodexOAuth).Result()
+	if err != nil {
+		t.Fatalf("read encrypted value: %v", err)
+	}
+	if rawEncrypted == "" {
+		t.Fatal("expected encrypted value to be stored")
+	}
+	if rawEncrypted == data.AccessToken || rawEncrypted == data.IdToken || rawEncrypted == data.RefreshToken {
+		t.Fatal("expected stored value to be encrypted, got plain token")
+	}
+
+	got, err := storage.GetSessionCodexOAuth(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("get codex oauth: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected codex oauth data, got nil")
+	}
+	if got.AccessToken != data.AccessToken || got.IdToken != data.IdToken || got.RefreshToken != data.RefreshToken {
+		t.Fatalf("unexpected oauth data: %+v", got)
+	}
+	if got.ExpiresAt == nil || !got.ExpiresAt.Equal(expiresAt) {
+		t.Fatalf("unexpected expiresAt: got=%v want=%v", got.ExpiresAt, expiresAt)
+	}
+
+	if err := storage.DeleteSessionCodexOAuth(ctx, sessionID); err != nil {
+		t.Fatalf("delete codex oauth: %v", err)
+	}
+	got, err = storage.GetSessionCodexOAuth(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("get after delete: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil after delete, got %+v", got)
+	}
+}
+
 func TestGetStreamEntriesByTypes(t *testing.T) {
 	mr, storage := setupTestRedis(t)
 	defer mr.Close()

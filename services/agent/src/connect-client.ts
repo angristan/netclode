@@ -483,7 +483,6 @@ async function handleControlPlaneMessage(
               openaiApiKey: process.env.OPENAI_API_KEY || "",
               codexAccessToken: config.codexAccessToken,
               codexIdToken: config.codexIdToken,
-              codexRefreshToken: config.codexRefreshToken,
               reasoningEffort: config.reasoningEffort,
               mistralApiKey: process.env.MISTRAL_API_KEY || "",
               ollamaUrl: config.ollamaUrl,
@@ -544,6 +543,10 @@ async function handleControlPlaneMessage(
       await handleUpdateGitCredentials(msg.message.value);
       break;
 
+    case "updateCodexAuth":
+      await handleUpdateCodexAuth(msg.message.value);
+      break;
+
     case "sessionAssigned":
       // Warm pool mode: session was assigned to us
       await handleSessionAssigned(sessionId, msg.message.value, send);
@@ -568,6 +571,32 @@ async function handleUpdateGitCredentials(credentials: {
   } catch (error) {
     console.error("[agent] Failed to update git credentials:", error);
   }
+}
+
+/**
+ * Handle runtime Codex OAuth token updates from control-plane.
+ */
+async function handleUpdateCodexAuth(tokens: {
+  accessToken: string;
+  idToken: string;
+  expiresAt?: { seconds: bigint | string | number; nanos: number };
+}): Promise<void> {
+  if (connection?.sessionConfig) {
+    connection.sessionConfig.codexAccessToken = tokens.accessToken;
+    connection.sessionConfig.codexIdToken = tokens.idToken;
+  }
+
+  if (!currentAdapter || typeof currentAdapter.updateCodexAuth !== "function") {
+    console.warn("[agent] Received Codex OAuth update but Codex adapter is not active");
+    return;
+  }
+
+  let expiresAtDate: Date | undefined;
+  if (tokens.expiresAt) {
+    expiresAtDate = new Date(Number(tokens.expiresAt.seconds) * 1000 + Math.floor(tokens.expiresAt.nanos / 1_000_000));
+  }
+
+  await currentAdapter.updateCodexAuth(tokens.accessToken, tokens.idToken, expiresAtDate);
 }
 
 /**
@@ -608,7 +637,6 @@ async function handleSessionAssigned(
       openaiApiKey: process.env.OPENAI_API_KEY || "",
       codexAccessToken: config.codexAccessToken,
       codexIdToken: config.codexIdToken,
-      codexRefreshToken: config.codexRefreshToken,
       reasoningEffort: config.reasoningEffort,
       mistralApiKey: process.env.MISTRAL_API_KEY || "",
       ollamaUrl: config.ollamaUrl,

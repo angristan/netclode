@@ -2,6 +2,10 @@ package session
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -247,13 +251,16 @@ func (m *mockRuntime) Close() {
 
 // mockStorage implements storage.Storage for testing
 type mockStorage struct {
-	mu       sync.Mutex
-	sessions map[string]*pb.Session
+	mu          sync.Mutex
+	sessions    map[string]*pb.Session
+	oauth       map[string]*storage.CodexOAuthSessionData
+	oauthGlobal *storage.CodexOAuthSessionData
 }
 
 func newMockStorage() *mockStorage {
 	return &mockStorage{
 		sessions: make(map[string]*pb.Session),
+		oauth:    make(map[string]*storage.CodexOAuthSessionData),
 	}
 }
 
@@ -296,10 +303,70 @@ func (m *mockStorage) UpdateSessionField(ctx context.Context, id, field, value s
 	return nil
 }
 
+func (m *mockStorage) SaveSessionCodexOAuth(ctx context.Context, sessionID string, data *storage.CodexOAuthSessionData) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if data == nil {
+		delete(m.oauth, sessionID)
+		return nil
+	}
+	c := *data
+	m.oauth[sessionID] = &c
+	return nil
+}
+
+func (m *mockStorage) GetSessionCodexOAuth(ctx context.Context, sessionID string) (*storage.CodexOAuthSessionData, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	data := m.oauth[sessionID]
+	if data == nil {
+		return nil, nil
+	}
+	c := *data
+	return &c, nil
+}
+
+func (m *mockStorage) DeleteSessionCodexOAuth(ctx context.Context, sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.oauth, sessionID)
+	return nil
+}
+
+func (m *mockStorage) SaveCodexOAuth(ctx context.Context, data *storage.CodexOAuthSessionData) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if data == nil {
+		m.oauthGlobal = nil
+		return nil
+	}
+	c := *data
+	m.oauthGlobal = &c
+	return nil
+}
+
+func (m *mockStorage) GetCodexOAuth(ctx context.Context) (*storage.CodexOAuthSessionData, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.oauthGlobal == nil {
+		return nil, nil
+	}
+	c := *m.oauthGlobal
+	return &c, nil
+}
+
+func (m *mockStorage) DeleteCodexOAuth(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.oauthGlobal = nil
+	return nil
+}
+
 func (m *mockStorage) DeleteSession(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.sessions, id)
+	delete(m.oauth, id)
 	return nil
 }
 
@@ -586,10 +653,20 @@ type mockWarmAgentConnection struct {
 	assignedConfig    *AgentSessionConfig
 	assignCalled      bool
 	assignError       error
+	executeCalled     bool
+	executeText       string
+	executeErr        error
+	codexAuthCalled   bool
+	codexAccessToken  string
+	codexIdToken      string
+	codexExpiresAt    *timestamppb.Timestamp
+	codexAuthErr      error
 }
 
 func (m *mockWarmAgentConnection) ExecutePrompt(text string) error {
-	return nil
+	m.executeCalled = true
+	m.executeText = text
+	return m.executeErr
 }
 
 func (m *mockWarmAgentConnection) Interrupt() error {
@@ -618,6 +695,14 @@ func (m *mockWarmAgentConnection) ResizeTerminal(cols, rows int) error {
 
 func (m *mockWarmAgentConnection) UpdateGitCredentials(token string, repoAccess pb.RepoAccess) error {
 	return nil
+}
+
+func (m *mockWarmAgentConnection) UpdateCodexAuth(accessToken, idToken string, expiresAt *timestamppb.Timestamp) error {
+	m.codexAuthCalled = true
+	m.codexAccessToken = accessToken
+	m.codexIdToken = idToken
+	m.codexExpiresAt = expiresAt
+	return m.codexAuthErr
 }
 
 func (m *mockWarmAgentConnection) AssignSession(sessionID string, config *AgentSessionConfig) error {
@@ -768,5 +853,201 @@ func TestMultipleWarmAgents(t *testing.T) {
 	}
 	if manager.GetAgentConnection("sess-b") != conn2 {
 		t.Error("sess-b should be assigned to conn2")
+	}
+}
+
+func TestCreate_CodexOAuthRequiresGlobalCredential(t *testing.T) {
+	manager, _, store := newTestManager(3)
+	manager.config.UseWarmPool = false
+
+	sdkType := pb.SdkType_SDK_TYPE_CODEX
+	model := "gpt-5-codex:oauth:high"
+	_, err := manager.Create(context.Background(), "OAuth Session", nil, nil, &sdkType, &model, nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected Create to fail when global codex oauth is not configured")
+	}
+
+	now := time.Now().UTC()
+	expiresAt := now.Add(30 * time.Minute)
+	if err := store.SaveCodexOAuth(context.Background(), &storage.CodexOAuthSessionData{
+		AccessToken:  "access-token",
+		IdToken:      "id-token",
+		RefreshToken: "refresh-token",
+		ExpiresAt:    &expiresAt,
+		UpdatedAt:    now,
+	}); err != nil {
+		t.Fatalf("SaveCodexOAuth failed: %v", err)
+	}
+
+	sess, err := manager.Create(context.Background(), "OAuth Session", nil, nil, &sdkType, &model, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if sess == nil || sess.Id == "" {
+		t.Fatalf("unexpected session returned: %+v", sess)
+	}
+}
+
+func TestGetSessionConfig_CodexOAuthOmitsRefreshToken(t *testing.T) {
+	manager, _, store := newTestManager(3)
+	manager.config.OpenAIAPIKey = "should-not-be-sent-in-oauth-mode"
+	sessionID := "sess-oauth-config"
+	now := time.Now().UTC()
+	model := "gpt-5-codex:oauth:high"
+	sdkType := pb.SdkType_SDK_TYPE_CODEX
+
+	session := &pb.Session{
+		Id:           sessionID,
+		Name:         "OAuth Session",
+		Status:       pb.SessionStatus_SESSION_STATUS_READY,
+		CreatedAt:    timestamppb.New(now),
+		LastActiveAt: timestamppb.New(now),
+		SdkType:      &sdkType,
+		Model:        &model,
+	}
+	manager.sessions[sessionID] = NewSessionState(session)
+	if err := store.SaveSession(context.Background(), session); err != nil {
+		t.Fatalf("SaveSession failed: %v", err)
+	}
+	expiresAt := now.Add(20 * time.Minute)
+	if err := store.SaveCodexOAuth(context.Background(), &storage.CodexOAuthSessionData{
+		AccessToken:  "oauth-access",
+		IdToken:      "oauth-id",
+		RefreshToken: "oauth-refresh",
+		ExpiresAt:    &expiresAt,
+		UpdatedAt:    now,
+	}); err != nil {
+		t.Fatalf("SaveCodexOAuth failed: %v", err)
+	}
+
+	cfg, err := manager.GetSessionConfig(context.Background(), sessionID)
+	if err != nil {
+		t.Fatalf("GetSessionConfig failed: %v", err)
+	}
+	if cfg.CodexAccessToken != "oauth-access" || cfg.CodexIdToken != "oauth-id" {
+		t.Fatalf("unexpected codex oauth tokens in config: %+v", cfg)
+	}
+	if cfg.OpenAIAPIKey != "" {
+		t.Fatalf("expected OpenAI API key to be omitted in oauth mode, got %q", cfg.OpenAIAPIKey)
+	}
+}
+
+func TestGetSessionConfig_CodexModelMissingAuthSuffixFails(t *testing.T) {
+	manager, _, store := newTestManager(3)
+	sessionID := "sess-codex-no-auth-suffix"
+	now := time.Now().UTC()
+	model := "gpt-5-codex"
+	sdkType := pb.SdkType_SDK_TYPE_CODEX
+
+	session := &pb.Session{
+		Id:           sessionID,
+		Name:         "Codex Session",
+		Status:       pb.SessionStatus_SESSION_STATUS_READY,
+		CreatedAt:    timestamppb.New(now),
+		LastActiveAt: timestamppb.New(now),
+		SdkType:      &sdkType,
+		Model:        &model,
+	}
+	manager.sessions[sessionID] = NewSessionState(session)
+	if err := store.SaveSession(context.Background(), session); err != nil {
+		t.Fatalf("SaveSession failed: %v", err)
+	}
+
+	_, err := manager.GetSessionConfig(context.Background(), sessionID)
+	if err == nil {
+		t.Fatal("expected GetSessionConfig to fail for codex model without auth suffix")
+	}
+	if !strings.Contains(err.Error(), "missing auth suffix") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSendPrompt_CodexOAuthRefreshesAndPushesUpdatedTokens(t *testing.T) {
+	manager, _, store := newTestManager(3)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"new-access","id_token":"new-id","refresh_token":"new-refresh","expires_in":3600}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("CODEX_REFRESH_TOKEN_URL_OVERRIDE", server.URL)
+
+	// Ensure mock storage can persist oauth data with keyless mock implementation.
+	manager.config.CodexOAuthEncryptionKey = []byte("0123456789abcdef0123456789abcdef")
+
+	sessionID := "sess-sendprompt-oauth"
+	now := time.Now().UTC()
+	sdkType := pb.SdkType_SDK_TYPE_CODEX
+	model := "gpt-5-codex:oauth:high"
+	session := &pb.Session{
+		Id:           sessionID,
+		Name:         "OAuth Prompt",
+		Status:       pb.SessionStatus_SESSION_STATUS_READY,
+		CreatedAt:    timestamppb.New(now),
+		LastActiveAt: timestamppb.New(now),
+		SdkType:      &sdkType,
+		Model:        &model,
+	}
+	state := NewSessionState(session)
+	manager.sessions[sessionID] = state
+	_ = store.SaveSession(context.Background(), session)
+
+	expiredAt := now.Add(1 * time.Minute)
+	_ = store.SaveCodexOAuth(context.Background(), &storage.CodexOAuthSessionData{
+		AccessToken:  "old-access",
+		IdToken:      "old-id",
+		RefreshToken: "old-refresh",
+		ExpiresAt:    &expiredAt,
+		UpdatedAt:    now,
+	})
+
+	conn := &mockWarmAgentConnection{}
+	manager.RegisterAgentConnection(sessionID, conn)
+	defer manager.UnregisterAgentConnection(sessionID)
+
+	if err := manager.SendPrompt(context.Background(), sessionID, "hello"); err != nil {
+		t.Fatalf("SendPrompt failed: %v", err)
+	}
+
+	if !conn.codexAuthCalled {
+		t.Fatal("expected UpdateCodexAuth to be called")
+	}
+	if conn.codexAccessToken != "new-access" || conn.codexIdToken != "new-id" {
+		t.Fatalf("unexpected updated codex tokens: access=%q id=%q", conn.codexAccessToken, conn.codexIdToken)
+	}
+
+	updated, err := store.GetCodexOAuth(context.Background())
+	if err != nil {
+		t.Fatalf("GetCodexOAuth failed: %v", err)
+	}
+	if updated == nil || updated.RefreshToken != "new-refresh" {
+		b, _ := json.Marshal(updated)
+		t.Fatalf("expected refreshed oauth data in storage, got %s", b)
+	}
+	if !conn.executeCalled {
+		t.Fatal("expected ExecutePrompt to be called")
+	}
+}
+
+func TestStartCodexAuth_RequiresEncryptionKey(t *testing.T) {
+	manager, _, _ := newTestManager(3)
+	manager.config.CodexOAuthEncryptionKey = nil
+
+	_, err := manager.StartCodexAuth(context.Background())
+	if err == nil {
+		t.Fatal("expected StartCodexAuth to fail without encryption key")
+	}
+	if !strings.Contains(err.Error(), "CODEX_OAUTH_ENCRYPTION_KEY_B64") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGetAllowedSecretForHost_CodexHasNoProxySecret(t *testing.T) {
+	manager, _, _ := newTestManager(3)
+
+	secretKey, placeholder := manager.getAllowedSecretForHost(pb.SdkType_SDK_TYPE_CODEX, "api.openai.com")
+	if secretKey != "" || placeholder != "" {
+		t.Fatalf("expected no proxy secret mapping for codex, got secretKey=%q placeholder=%q", secretKey, placeholder)
 	}
 }

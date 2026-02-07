@@ -5,6 +5,7 @@ import (
 	"time"
 
 	pb "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
+	"github.com/angristan/netclode/services/control-plane/internal/storage"
 )
 
 // SessionState holds the in-memory state for a session.
@@ -26,6 +27,9 @@ type SessionState struct {
 
 	// Restore state - when set, next sandbox creation restores from this snapshot
 	RestoreSnapshotID string
+
+	// Session-scoped Codex OAuth tokens (persisted encrypted in Redis).
+	CodexOAuth *storage.CodexOAuthSessionData
 }
 
 // NewSessionState creates a new session state.

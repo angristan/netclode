@@ -33,6 +33,7 @@ type Tokens struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	IDToken      string `json:"id_token"`
+	ExpiresIn    int64  `json:"expires_in,omitempty"`
 }
 
 // RequestDeviceCode requests a device code from OpenAI auth

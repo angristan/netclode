@@ -211,6 +211,12 @@ func (c *ConnectConnection) handleMessage(ctx context.Context, msg *pb.ClientMes
 		return c.handleUpdateRepoAccess(ctx, m.UpdateRepoAccess)
 	case *pb.ClientMessage_GetResourceLimits:
 		return c.handleGetResourceLimits(ctx, m.GetResourceLimits)
+	case *pb.ClientMessage_CodexAuthStart:
+		return c.handleCodexAuthStart(ctx, m.CodexAuthStart)
+	case *pb.ClientMessage_CodexAuthStatus:
+		return c.handleCodexAuthStatus(ctx, m.CodexAuthStatus)
+	case *pb.ClientMessage_CodexAuthLogout:
+		return c.handleCodexAuthLogout(ctx, m.CodexAuthLogout)
 	default:
 		return connect.NewError(connect.CodeInvalidArgument, errUnknownMessage)
 	}
@@ -371,10 +377,18 @@ func (c *ConnectConnection) handleSessionCreate(ctx context.Context, req *pb.Cre
 	if req.Resources != nil {
 		resourcesPtr = req.Resources
 	}
-
 	name := ""
 	if req.Name != nil {
 		name = *req.Name
+	}
+	if req.CodexOauthTokens != nil {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("codex_oauth_tokens are no longer accepted; use backend codex auth flow"))
+	}
+
+	if sdkTypePtr != nil && *sdkTypePtr == pb.SdkType_SDK_TYPE_CODEX {
+		if modelPtr == nil || codexModelAuthMode(*modelPtr) == "" {
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("codex model must include auth suffix (:oauth or :api), e.g. gpt-5.2-codex:oauth:high"))
+		}
 	}
 
 	sess, err := c.manager.Create(ctx, name, repos, repoAccessPtr, sdkTypePtr, modelPtr, copilotBackendPtr, tailnetAccessPtr, resourcesPtr)
@@ -731,6 +745,25 @@ func (c *ConnectConnection) handleListModels(ctx context.Context, req *pb.ListMo
 	})
 }
 
+func codexModelAuthMode(model string) string {
+	parts := strings.Split(model, ":")
+	if len(parts) < 2 {
+		return ""
+	}
+	last := parts[len(parts)-1]
+	if last == "minimal" || last == "low" || last == "medium" || last == "high" || last == "xhigh" {
+		if len(parts) >= 3 {
+			last = parts[len(parts)-2]
+		} else {
+			return ""
+		}
+	}
+	if last == "api" || last == "oauth" {
+		return last
+	}
+	return ""
+}
+
 // handleGetCopilotStatus returns GitHub Copilot authentication status and quota.
 func (c *ConnectConnection) handleGetCopilotStatus(ctx context.Context) error {
 	status := c.manager.GetCopilotStatus(ctx)
@@ -819,6 +852,45 @@ func (c *ConnectConnection) handleGetResourceLimits(ctx context.Context, req *pb
 	return c.send(&pb.ServerMessage{
 		Message: &pb.ServerMessage_ResourceLimits{
 			ResourceLimits: limits,
+		},
+	})
+}
+
+func (c *ConnectConnection) handleCodexAuthStart(ctx context.Context, req *pb.CodexAuthStartRequest) error {
+	resp, err := c.manager.StartCodexAuth(ctx)
+	if err != nil {
+		return c.send(makeErrorResponse("", "CODEX_AUTH_ERROR", err.Error()))
+	}
+	resp.RequestId = req.RequestId
+	return c.send(&pb.ServerMessage{
+		Message: &pb.ServerMessage_CodexAuthStarted{
+			CodexAuthStarted: resp,
+		},
+	})
+}
+
+func (c *ConnectConnection) handleCodexAuthStatus(ctx context.Context, req *pb.CodexAuthStatusRequest) error {
+	resp, err := c.manager.GetCodexAuthStatus(ctx)
+	if err != nil {
+		return c.send(makeErrorResponse("", "CODEX_AUTH_ERROR", err.Error()))
+	}
+	resp.RequestId = req.RequestId
+	return c.send(&pb.ServerMessage{
+		Message: &pb.ServerMessage_CodexAuthStatus{
+			CodexAuthStatus: resp,
+		},
+	})
+}
+
+func (c *ConnectConnection) handleCodexAuthLogout(ctx context.Context, req *pb.CodexAuthLogoutRequest) error {
+	if err := c.manager.LogoutCodexAuth(ctx); err != nil {
+		return c.send(makeErrorResponse("", "CODEX_AUTH_ERROR", err.Error()))
+	}
+	return c.send(&pb.ServerMessage{
+		Message: &pb.ServerMessage_CodexAuthLoggedOut{
+			CodexAuthLoggedOut: &pb.CodexAuthLoggedOutResponse{
+				RequestId: req.RequestId,
+			},
 		},
 	})
 }

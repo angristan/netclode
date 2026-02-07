@@ -30,10 +30,8 @@ type Config struct {
 	CPUOvercommitRatio    int
 	MemoryOvercommitRatio int
 
-	// Codex OAuth tokens (for ChatGPT auth mode)
-	CodexAccessToken  string
-	CodexIdToken      string
-	CodexRefreshToken string
+	// Session-scoped Codex OAuth vault encryption key (base64-encoded 32-byte key in env)
+	CodexOAuthEncryptionKey []byte
 
 	// GitHub App integration (for repo-scoped tokens)
 	GitHubAppID          int64
@@ -70,10 +68,7 @@ func Load() *Config {
 		CPUOvercommitRatio:    getEnvInt("CPU_OVERCOMMIT_RATIO", 1),    // 1 = no overcommit
 		MemoryOvercommitRatio: getEnvInt("MEMORY_OVERCOMMIT_RATIO", 1), // 1 = no overcommit
 
-		// Codex OAuth tokens
-		CodexAccessToken:  getEnv("CODEX_ACCESS_TOKEN", ""),
-		CodexIdToken:      getEnv("CODEX_ID_TOKEN", ""),
-		CodexRefreshToken: getEnv("CODEX_REFRESH_TOKEN", ""),
+		CodexOAuthEncryptionKey: getCodexOAuthEncryptionKey(),
 
 		// GitHub App integration
 		GitHubAppID:          getEnvInt64("GITHUB_APP_ID", 0),
@@ -104,6 +99,18 @@ func getGitHubPrivateKey() string {
 	}
 	// Fall back to raw PEM
 	return os.Getenv("GITHUB_APP_PRIVATE_KEY")
+}
+
+func getCodexOAuthEncryptionKey() []byte {
+	keyB64 := os.Getenv("CODEX_OAUTH_ENCRYPTION_KEY_B64")
+	if keyB64 == "" {
+		return nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(keyB64)
+	if err != nil || len(decoded) != 32 {
+		return nil
+	}
+	return decoded
 }
 
 // HasGitHubApp returns true if GitHub App is configured.

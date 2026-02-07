@@ -49,9 +49,7 @@
         github_token: "{{ (env_content_raw | regex_search('(?m)^GITHUB_TOKEN=(.*)$', '\\1') or [''])[0] }}"
         github_copilot_token: "{{ (env_content_raw | regex_search('(?m)^GITHUB_COPILOT_TOKEN=(.*)$', '\\1') or [''])[0] }}"
         openai_api_key: "{{ (env_content_raw | regex_search('(?m)^OPENAI_API_KEY=(.*)$', '\\1') or [''])[0] }}"
-        codex_access_token: "{{ (env_content_raw | regex_search('(?m)^CODEX_ACCESS_TOKEN=(.*)$', '\\1') or [''])[0] }}"
-        codex_id_token: "{{ (env_content_raw | regex_search('(?m)^CODEX_ID_TOKEN=(.*)$', '\\1') or [''])[0] }}"
-        codex_refresh_token: "{{ (env_content_raw | regex_search('(?m)^CODEX_REFRESH_TOKEN=(.*)$', '\\1') or [''])[0] }}"
+        codex_oauth_encryption_key_b64: "{{ (env_content_raw | regex_search('(?m)^CODEX_OAUTH_ENCRYPTION_KEY_B64=(.*)$', '\\1') or [''])[0] }}"
         mistral_api_key: "{{ (env_content_raw | regex_search('(?m)^MISTRAL_API_KEY=(.*)$', '\\1') or [''])[0] }}"
         opencode_api_key: "{{ (env_content_raw | regex_search('(?m)^OPENCODE_API_KEY=(.*)$', '\\1') or [''])[0] }}"
         zai_api_key: "{{ (env_content_raw | regex_search('(?m)^ZAI_API_KEY=(.*)$', '\\1') or [''])[0] }}"
@@ -126,9 +124,6 @@
             | combine({'opencode': opencode_api_key} if opencode_api_key | length > 0 else {})
             | combine({'zai': zai_api_key} if zai_api_key | length > 0 else {})
             | combine({'github_copilot': github_copilot_token} if github_copilot_token | length > 0 else {})
-            | combine({'codex_access': codex_access_token} if codex_access_token | length > 0 else {})
-            | combine({'codex_id': codex_id_token} if codex_id_token | length > 0 else {})
-            | combine({'codex_refresh': codex_refresh_token} if codex_refresh_token | length > 0 else {})
           }}
 
     # Create secret-proxy-secrets for the proxy (contains real API keys)
@@ -166,9 +161,7 @@
             opencode-api-key: "{{ opencode_api_key }}"
             zai-api-key: "{{ zai_api_key }}"
             github-copilot-token: "{{ github_copilot_token }}"
-            codex-access-token: "{{ codex_access_token }}"
-            codex-id-token: "{{ codex_id_token }}"
-            codex-refresh-token: "{{ codex_refresh_token }}"
+            codex-oauth-encryption-key-b64: "{{ codex_oauth_encryption_key_b64 }}"
             # Placeholders for sandbox (agent sees these, proxy replaces them)
             anthropic-api-key-placeholder: "NETCLODE_PLACEHOLDER_anthropic"
             openai-api-key-placeholder: "NETCLODE_PLACEHOLDER_openai"
@@ -176,9 +169,6 @@
             opencode-api-key-placeholder: "NETCLODE_PLACEHOLDER_opencode"
             zai-api-key-placeholder: "NETCLODE_PLACEHOLDER_zai"
             github-copilot-token-placeholder: "NETCLODE_PLACEHOLDER_github_copilot"
-            codex-access-token-placeholder: "NETCLODE_PLACEHOLDER_codex_access"
-            codex-id-token-placeholder: "NETCLODE_PLACEHOLDER_codex_id"
-            codex-refresh-token-placeholder: "NETCLODE_PLACEHOLDER_codex_refresh"
             # Non-proxied secrets (used directly, not through proxy)
             # GITHUB_TOKEN is for git operations (clone/push) - uses credential helper, not HTTP headers
             github-token: "{{ github_token }}"
@@ -187,7 +177,6 @@
             github-app-private-key: "{{ github_app_private_key_b64 | b64decode }}"
             github-installation-id: "{{ github_installation_id }}"
             tailscale-authkey: "{{ tailscale_authkey }}"
-      when: anthropic_api_key | length > 0
 
     - name: Check if juicefs-secret already exists
       kubernetes.core.k8s_info:

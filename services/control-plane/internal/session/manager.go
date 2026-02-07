@@ -30,18 +30,22 @@ type SessionUpdateCallback func(session *pb.Session)
 
 // AgentSessionConfig contains typed configuration for an agent session.
 type AgentSessionConfig struct {
-	SessionID       string
-	GitHubToken     string // For git credentials (from GitHub App) - not proxied, used in git URLs
-	Repos           []string
-	RepoAccess      *pb.RepoAccess
-	SdkType         *pb.SdkType
-	Model           string
-	CopilotBackend  *pb.CopilotBackend
-	CodexAccessToken  string // For Codex OAuth mode - written to ~/.codex/auth.json, can't be proxied
-	CodexIdToken      string // For Codex OAuth mode - written to ~/.codex/auth.json, can't be proxied
-	CodexRefreshToken string // For Codex OAuth mode - written to ~/.codex/auth.json, can't be proxied
-	ReasoningEffort string // For Codex reasoning effort (low, medium, high)
-	OllamaURL       string // For local Ollama inference
+	SessionID          string
+	OpenAIAPIKey       string // For Codex API mode
+	MistralAPIKey      string // For OpenCode Mistral models
+	GitHubToken        string // For git credentials (from GitHub App)
+	GitHubCopilotToken string // For Copilot SDK
+	Repos              []string
+	RepoAccess         *pb.RepoAccess
+	SdkType            *pb.SdkType
+	Model              string
+	CopilotBackend     *pb.CopilotBackend
+	CodexAccessToken   string // For Codex OAuth mode
+	CodexIdToken       string // For Codex OAuth mode
+	ReasoningEffort    string // For Codex reasoning effort (low, medium, high)
+	OllamaURL          string // For local Ollama inference
+	OpenCodeAPIKey     string // For OpenCode Zen models
+	ZaiAPIKey          string // For Z.AI GLM-4.7 models
 }
 
 // AgentConnection represents a connected agent that can receive commands.
@@ -54,6 +58,7 @@ type AgentConnection interface {
 	SendTerminalInput(data string) error
 	ResizeTerminal(cols, rows int) error
 	UpdateGitCredentials(token string, repoAccess pb.RepoAccess) error
+	UpdateCodexAuth(accessToken, idToken string, expiresAt *timestamppb.Timestamp) error
 }
 
 // WarmAgentConnection extends AgentConnection with session assignment capability.
@@ -77,6 +82,12 @@ type Manager struct {
 
 	// onSessionUpdated is called when a session is updated internally (e.g., auto-pause).
 	onSessionUpdated SessionUpdateCallback
+
+	// Backend-managed Codex OAuth device flow state.
+	codexAuthMu          sync.Mutex
+	codexAuthPending     *codexAuthPendingState
+	codexAuthLastError   string
+	codexAuthLastErrorAt time.Time
 }
 
 // NewManager creates a new session manager.
@@ -265,6 +276,20 @@ func (m *Manager) Create(ctx context.Context, name string, repos []string, repoA
 	if resources != nil {
 		if err := m.validateResources(resources); err != nil {
 			return nil, err
+		}
+	}
+
+	// Codex OAuth sessions require backend-managed global OAuth credentials.
+	if sdkType != nil && *sdkType == pb.SdkType_SDK_TYPE_CODEX && model != nil {
+		authMode, _ := parseCodexAuthModeAndEffort(*model)
+		if authMode == "oauth" {
+			oauthData, err := m.getCodexOAuth(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("get codex oauth data: %w", err)
+			}
+			if oauthData == nil || oauthData.AccessToken == "" || oauthData.IdToken == "" || oauthData.RefreshToken == "" {
+				return nil, fmt.Errorf("codex oauth is not configured")
+			}
 		}
 	}
 
@@ -1522,10 +1547,15 @@ func (m *Manager) GetSessionConfig(ctx context.Context, sessionID string) (*Agen
 	}
 
 	config := &AgentSessionConfig{
-		SessionID:      sessionID,
-		SdkType:        state.Session.SdkType,
-		CopilotBackend: state.Session.CopilotBackend,
-		OllamaURL:      m.config.OllamaURL,
+		SessionID:          sessionID,
+		OpenAIAPIKey:       m.config.OpenAIAPIKey,
+		MistralAPIKey:      m.config.MistralAPIKey,
+		GitHubCopilotToken: m.config.GitHubCopilotToken,
+		SdkType:            state.Session.SdkType,
+		CopilotBackend:     state.Session.CopilotBackend,
+		OllamaURL:          m.config.OllamaURL,
+		OpenCodeAPIKey:     m.config.OpenCodeAPIKey,
+		ZaiAPIKey:          m.config.ZaiAPIKey,
 	}
 
 	if state.Session.Model != nil {
@@ -1555,27 +1585,30 @@ func (m *Manager) GetSessionConfig(ctx context.Context, sessionID string) (*Agen
 		// For Codex SDK, parse model format: base:auth:effort (e.g., gpt-5-codex:oauth:high)
 		// Also supports legacy format: base:auth (e.g., gpt-5-codex:oauth)
 		if state.Session.SdkType != nil && *state.Session.SdkType == pb.SdkType_SDK_TYPE_CODEX {
-			parts := strings.Split(model, ":")
-			if len(parts) >= 2 {
-				authMode := parts[len(parts)-1]
-				// Check if last part is a reasoning effort level
-				if authMode == "low" || authMode == "medium" || authMode == "high" || authMode == "minimal" || authMode == "xhigh" {
-					config.ReasoningEffort = authMode
-					// Auth mode is second-to-last
-					if len(parts) >= 3 {
-						authMode = parts[len(parts)-2]
-					} else {
-						authMode = ""
-					}
-				}
+			authMode, reasoningEffort := parseCodexAuthModeAndEffort(model)
+			if authMode == "" {
+				return nil, fmt.Errorf("invalid codex model for session %s: missing auth suffix (:oauth or :api)", sessionID)
+			}
+			if reasoningEffort != "" {
+				config.ReasoningEffort = reasoningEffort
+			}
 
-				// For OAuth mode, send tokens (written to ~/.codex/auth.json, can't be proxied).
-				// API mode uses OPENAI_API_KEY placeholder env var, proxied by secret-proxy.
-				if authMode == "oauth" {
-					config.CodexAccessToken = m.config.CodexAccessToken
-					config.CodexIdToken = m.config.CodexIdToken
-					config.CodexRefreshToken = m.config.CodexRefreshToken
+			// Set credentials based on auth mode.
+			// OAuth mode is session-scoped and loaded from encrypted storage, never from global env.
+			if authMode == "api" {
+				config.OpenAIAPIKey = m.config.OpenAIAPIKey
+			} else if authMode == "oauth" {
+				// Ensure OAuth sessions do not carry API-key credentials.
+				config.OpenAIAPIKey = ""
+				oauthData, err := m.getSessionCodexOAuth(ctx, sessionID)
+				if err != nil {
+					return nil, fmt.Errorf("get session codex oauth data: %w", err)
 				}
+				if oauthData == nil || oauthData.AccessToken == "" || oauthData.IdToken == "" {
+					return nil, fmt.Errorf("codex oauth tokens not configured for session %s", sessionID)
+				}
+				config.CodexAccessToken = oauthData.AccessToken
+				config.CodexIdToken = oauthData.IdToken
 			}
 		}
 	}
@@ -2097,11 +2130,9 @@ func (m *Manager) getAllowedSecretForHost(sdkType pb.SdkType, host string) (secr
 		}
 
 	case pb.SdkType_SDK_TYPE_CODEX:
-		allowedMappings = []hostMapping{
-			// Codex API mode: agent sends OPENAI_API_KEY placeholder, proxy injects OAuth access token
-			// (OpenAI API accepts OAuth tokens as Bearer tokens)
-			{hosts: []string{"api.openai.com"}, secretKey: "codex_access", placeholder: "NETCLODE_PLACEHOLDER_openai"},
-		}
+		// Codex authentication is now provided directly by backend-issued API/OAuth
+		// tokens to the agent. No placeholder replacement is configured for Codex.
+		allowedMappings = nil
 
 	default:
 		// Default to Claude behavior
@@ -2127,6 +2158,79 @@ func (m *Manager) getAllowedSecretForHost(sdkType pb.SdkType, host string) (secr
 	}
 
 	return "", ""
+}
+
+func isCodexReasoningEffort(value string) bool {
+	switch value {
+	case "minimal", "low", "medium", "high", "xhigh":
+		return true
+	default:
+		return false
+	}
+}
+
+// parseCodexAuthModeAndEffort extracts auth mode and reasoning effort from model suffix.
+// Supported formats:
+// - base:api
+// - base:oauth
+// - base:api:high
+// - base:oauth:low
+func parseCodexAuthModeAndEffort(model string) (authMode, reasoningEffort string) {
+	parts := strings.Split(model, ":")
+	if len(parts) < 2 {
+		return "", ""
+	}
+
+	authMode = parts[len(parts)-1]
+	if isCodexReasoningEffort(authMode) {
+		reasoningEffort = authMode
+		if len(parts) >= 3 {
+			authMode = parts[len(parts)-2]
+		} else {
+			authMode = ""
+		}
+	}
+
+	if authMode != "api" && authMode != "oauth" {
+		authMode = ""
+	}
+	return authMode, reasoningEffort
+}
+
+func cloneCodexOAuthData(data *storage.CodexOAuthSessionData) *storage.CodexOAuthSessionData {
+	if data == nil {
+		return nil
+	}
+	c := *data
+	if data.ExpiresAt != nil {
+		expiresAt := *data.ExpiresAt
+		c.ExpiresAt = &expiresAt
+	}
+	return &c
+}
+
+func (m *Manager) getCodexOAuth(ctx context.Context) (*storage.CodexOAuthSessionData, error) {
+	data, err := m.storage.GetCodexOAuth(ctx)
+	if err != nil || data == nil {
+		return data, err
+	}
+	return cloneCodexOAuthData(data), nil
+}
+
+func (m *Manager) saveCodexOAuth(ctx context.Context, data *storage.CodexOAuthSessionData) error {
+	if err := m.storage.SaveCodexOAuth(ctx, data); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Legacy wrappers kept while tests/branches are still converging.
+func (m *Manager) getSessionCodexOAuth(ctx context.Context, _ string) (*storage.CodexOAuthSessionData, error) {
+	return m.getCodexOAuth(ctx)
+}
+
+func (m *Manager) saveSessionCodexOAuth(ctx context.Context, _ string, data *storage.CodexOAuthSessionData) error {
+	return m.saveCodexOAuth(ctx, data)
 }
 
 // ListModels returns available models for the specified SDK type.
@@ -2649,13 +2753,18 @@ func (m *Manager) getCopilotModelsFallback() []*pb.ModelInfo {
 }
 
 // fetchCodexModels fetches OpenAI Codex models (family: gpt-codex or gpt-codex-mini)
-// Returns models with auth mode suffix based on available credentials:
+// and returns auth mode suffix variants based on backend-available credentials:
 // - ":api" suffix when OPENAI_API_KEY is configured
-// - ":oauth" suffix when CODEX_ACCESS_TOKEN is configured
-// If both are configured, returns both sets of models
+// - ":oauth" suffix when backend Codex OAuth credentials are configured
+// If both are configured, both sets are returned.
 func (m *Manager) fetchCodexModels() []*pb.ModelInfo {
 	hasAPIKey := m.config.OpenAIAPIKey != ""
-	hasOAuth := m.config.CodexAccessToken != ""
+	hasOAuth := false
+	if data, err := m.storage.GetCodexOAuth(context.Background()); err != nil {
+		slog.Warn("Failed to read global Codex OAuth credentials", "error", err)
+	} else if data != nil && data.AccessToken != "" && data.IdToken != "" && data.RefreshToken != "" {
+		hasOAuth = true
+	}
 
 	// If neither is configured, return empty
 	if !hasAPIKey && !hasOAuth {

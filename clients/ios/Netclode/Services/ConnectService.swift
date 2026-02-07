@@ -548,6 +548,15 @@ final class ConnectService {
                 defaultMemoryMB: msg.defaultMemoryMb
             ))
 
+        case .codexAuthStarted:
+            return nil
+
+        case .codexAuthStatus:
+            return nil
+
+        case .codexAuthLoggedOut:
+            return nil
+
         case .none:
             return nil
         }
@@ -1266,7 +1275,7 @@ final class ConnectService {
     private func recordActivity() {
         lastActivityAt = Date()
     }
-    
+
     private func convertToProtoMessage(_ message: ClientMessage) -> Netclode_V1_ClientMessage {
         var proto = Netclode_V1_ClientMessage()
         

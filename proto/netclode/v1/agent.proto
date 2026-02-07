@@ -4,6 +4,7 @@ package netclode.v1;
 
 import "netclode/v1/common.proto";
 import "netclode/v1/events.proto";
+import "google/protobuf/timestamp.proto";
 
 // AgentService handles bidirectional communication between agents and control plane.
 // Agents connect to the control plane (not the other way around).
@@ -64,6 +65,9 @@ message ControlPlaneMessage {
     
     // Session assigned (warm pool mode) - pushed when claim binds
     SessionAssigned session_assigned = 9;
+
+    // Update Codex OAuth tokens for an active session.
+    UpdateCodexAuth update_codex_auth = 10;
   }
 }
 
@@ -202,4 +206,9 @@ message UpdateGitCredentials {
   RepoAccess repo_access = 2;                // New access level (for logging)
 }
 
-
+// UpdateCodexAuth updates short-lived Codex OAuth tokens for the running agent.
+message UpdateCodexAuth {
+  string access_token = 1;
+  string id_token = 2;
+  optional google.protobuf.Timestamp expires_at = 3;
+}

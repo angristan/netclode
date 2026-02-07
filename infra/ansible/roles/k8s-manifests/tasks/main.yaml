@@ -40,6 +40,41 @@
     definition: "{{ lookup('file', k8s_manifest_dir ~ '/namespace.yaml') | from_yaml_all }}"
     kubeconfig: "{{ k3s_kubeconfig }}"
 
+- name: Create image pull secret (optional)
+  kubernetes.core.k8s:
+    state: present
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ image_pull_secret_name }}"
+        namespace: netclode
+      type: kubernetes.io/dockerconfigjson
+      stringData:
+        .dockerconfigjson: >-
+          {{
+            {
+              "auths": {
+                image_pull_secret_registry: {
+                  "username": image_pull_secret_username,
+                  "password": image_pull_secret_password,
+                  "auth": (image_pull_secret_username ~ ":" ~ image_pull_secret_password) | b64encode
+                }
+              }
+            } | to_json
+          }}
+  when:
+    - image_pull_secret_name | length > 0
+    - image_pull_secret_username | length > 0
+    - image_pull_secret_password | length > 0
+
+- name: Deploy priority classes
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/priority-classes.yaml') | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
 - name: Deploy RBAC
   kubernetes.core.k8s:
     state: present
@@ -80,7 +115,7 @@
 - name: Deploy sandbox template
   kubernetes.core.k8s:
     state: present
-    definition: "{{ lookup('file', k8s_manifest_dir ~ '/sandbox-template.yaml') | from_yaml_all }}"
+    definition: "{{ lookup('template', 'sandbox-template.yaml.j2') | from_yaml_all }}"
     kubeconfig: "{{ k3s_kubeconfig }}"
 
 - name: Deploy sandbox warm pool

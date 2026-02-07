@@ -346,11 +346,11 @@ public struct Netclode_V1_ToolStartPayload: Sendable {
 
   /// Set when tool runs inside a Task/subagent
   public var parentToolUseID: String {
-    get {return _parentToolUseID ?? String()}
+    get {_parentToolUseID ?? String()}
     set {_parentToolUseID = newValue}
   }
   /// Returns true if `parentToolUseID` has been explicitly set.
-  public var hasParentToolUseID: Bool {return self._parentToolUseID != nil}
+  public var hasParentToolUseID: Bool {self._parentToolUseID != nil}
   /// Clears the value of `parentToolUseID`. Subsequent reads from it will return its default value.
   public mutating func clearParentToolUseID() {self._parentToolUseID = nil}
 
@@ -370,21 +370,21 @@ public struct Netclode_V1_ToolInputPayload: Sendable {
   /// For partial=true: delta contains the streaming chunk
   /// For partial=false: input contains the full input
   public var delta: String {
-    get {return _delta ?? String()}
+    get {_delta ?? String()}
     set {_delta = newValue}
   }
   /// Returns true if `delta` has been explicitly set.
-  public var hasDelta: Bool {return self._delta != nil}
+  public var hasDelta: Bool {self._delta != nil}
   /// Clears the value of `delta`. Subsequent reads from it will return its default value.
   public mutating func clearDelta() {self._delta = nil}
 
   /// Full tool input (when partial=false)
   public var input: SwiftProtobuf.Google_Protobuf_Struct {
-    get {return _input ?? SwiftProtobuf.Google_Protobuf_Struct()}
+    get {_input ?? SwiftProtobuf.Google_Protobuf_Struct()}
     set {_input = newValue}
   }
   /// Returns true if `input` has been explicitly set.
-  public var hasInput: Bool {return self._input != nil}
+  public var hasInput: Bool {self._input != nil}
   /// Clears the value of `input`. Subsequent reads from it will return its default value.
   public mutating func clearInput() {self._input = nil}
 
@@ -405,21 +405,21 @@ public struct Netclode_V1_ToolOutputPayload: Sendable {
   /// For partial=true: delta contains the streaming chunk
   /// For partial=false: output contains the full output
   public var delta: String {
-    get {return _delta ?? String()}
+    get {_delta ?? String()}
     set {_delta = newValue}
   }
   /// Returns true if `delta` has been explicitly set.
-  public var hasDelta: Bool {return self._delta != nil}
+  public var hasDelta: Bool {self._delta != nil}
   /// Clears the value of `delta`. Subsequent reads from it will return its default value.
   public mutating func clearDelta() {self._delta = nil}
 
   /// Full tool output (when partial=false)
   public var output: String {
-    get {return _output ?? String()}
+    get {_output ?? String()}
     set {_output = newValue}
   }
   /// Returns true if `output` has been explicitly set.
-  public var hasOutput: Bool {return self._output != nil}
+  public var hasOutput: Bool {self._output != nil}
   /// Clears the value of `output`. Subsequent reads from it will return its default value.
   public mutating func clearOutput() {self._output = nil}
 
@@ -442,31 +442,31 @@ public struct Netclode_V1_ToolEndPayload: Sendable {
 
   /// Error message if failed
   public var error: String {
-    get {return _error ?? String()}
+    get {_error ?? String()}
     set {_error = newValue}
   }
   /// Returns true if `error` has been explicitly set.
-  public var hasError: Bool {return self._error != nil}
+  public var hasError: Bool {self._error != nil}
   /// Clears the value of `error`. Subsequent reads from it will return its default value.
   public mutating func clearError() {self._error = nil}
 
   /// Duration in milliseconds
   public var durationMs: Int64 {
-    get {return _durationMs ?? 0}
+    get {_durationMs ?? 0}
     set {_durationMs = newValue}
   }
   /// Returns true if `durationMs` has been explicitly set.
-  public var hasDurationMs: Bool {return self._durationMs != nil}
+  public var hasDurationMs: Bool {self._durationMs != nil}
   /// Clears the value of `durationMs`. Subsequent reads from it will return its default value.
   public mutating func clearDurationMs() {self._durationMs = nil}
 
   /// Tool output/result (for successful tools)
   public var result: String {
-    get {return _result ?? String()}
+    get {_result ?? String()}
     set {_result = newValue}
   }
   /// Returns true if `result` has been explicitly set.
-  public var hasResult: Bool {return self._result != nil}
+  public var hasResult: Bool {self._result != nil}
   /// Clears the value of `result`. Subsequent reads from it will return its default value.
   public mutating func clearResult() {self._result = nil}
 
@@ -490,21 +490,21 @@ public struct Netclode_V1_PortExposedPayload: Sendable {
 
   /// Process name listening on the port
   public var process: String {
-    get {return _process ?? String()}
+    get {_process ?? String()}
     set {_process = newValue}
   }
   /// Returns true if `process` has been explicitly set.
-  public var hasProcess: Bool {return self._process != nil}
+  public var hasProcess: Bool {self._process != nil}
   /// Clears the value of `process`. Subsequent reads from it will return its default value.
   public mutating func clearProcess() {self._process = nil}
 
   /// URL to access the exposed port
   public var previewURL: String {
-    get {return _previewURL ?? String()}
+    get {_previewURL ?? String()}
     set {_previewURL = newValue}
   }
   /// Returns true if `previewURL` has been explicitly set.
-  public var hasPreviewURL: Bool {return self._previewURL != nil}
+  public var hasPreviewURL: Bool {self._previewURL != nil}
   /// Clears the value of `previewURL`. Subsequent reads from it will return its default value.
   public mutating func clearPreviewURL() {self._previewURL = nil}
 
