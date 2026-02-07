@@ -197,7 +197,8 @@ struct ChatInputBar: View {
                             .foregroundStyle(.white)
                     }
             }
-            .disabled(!canSend)
+            .disabled(!canSend || rightButtonMode != .send)
+            .keyboardShortcut(.return, modifiers: .command)
             .opacity(rightButtonMode == .send ? 1 : 0)
             .scaleEffect(rightButtonMode == .send ? 1 : 0.5)
             
