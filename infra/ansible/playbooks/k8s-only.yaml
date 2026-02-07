@@ -7,7 +7,9 @@
 - name: Deploy k8s manifests
   hosts: all
   become: yes
-  gather_facts: no
+  gather_facts: yes
+  vars_files:
+    - ../group_vars/all.yaml
 
   roles:
     - role: k8s-manifests
