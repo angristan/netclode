@@ -1121,9 +1121,33 @@ func (m *Manager) ExposePort(ctx context.Context, sessionID string, port int) (s
 	return previewURL, nil
 }
 
-// restoreExposedPorts re-exposes ports that were previously exposed for a session.
+// UnexposePort removes a port exposure for a session via Tailscale and persists the event.
+func (m *Manager) UnexposePort(ctx context.Context, sessionID string, port int) error {
+	if err := m.k8s.UnexposePort(ctx, sessionID, port); err != nil {
+		return err
+	}
+
+	port32 := int32(port)
+	event := &pb.AgentEvent{
+		Kind:          pb.AgentEventKind_AGENT_EVENT_KIND_PORT_UNEXPOSED,
+		CorrelationId: fmt.Sprintf("port-%d", port),
+		Payload: &pb.AgentEvent_PortUnexposed{
+			PortUnexposed: &pb.PortUnexposedPayload{
+				Port: port32,
+			},
+		},
+	}
+
+	// Emit to all connected clients (this also persists to the stream)
+	// Port unexposed events are final (not partial streaming)
+	m.emitAgentEvent(ctx, sessionID, event, false)
+
+	return nil
+}
+
+// restoreExposedPorts re-exposes ports that are currently exposed for a session.
 // This is called during resume to restore port exposure after sandbox recreation.
-// It reads persisted port_exposed events from the stream and re-applies them to K8s.
+// It reads persisted port_exposed/port_unexposed events from the stream and re-applies final state to K8s.
 func (m *Manager) restoreExposedPorts(ctx context.Context, sessionID string) {
 	// Read all event entries from the stream
 	entries, err := m.storage.GetStreamEntriesByTypes(ctx, sessionID, "0", 0, []string{storage.StreamEntryTypeEvent})
@@ -1132,19 +1156,24 @@ func (m *Manager) restoreExposedPorts(ctx context.Context, sessionID string) {
 		return
 	}
 
-	// Collect unique ports that were exposed
+	// Rebuild final port exposure state from persisted events.
 	exposedPorts := make(map[int32]bool)
 	for _, e := range entries {
 		if e.Entry.Partial {
 			continue // Skip partial (streaming) entries
 		}
 		var event pb.AgentEvent
-		if err := json.Unmarshal(e.Entry.Payload, &event); err != nil {
+		if err := protojson.Unmarshal(e.Entry.Payload, &event); err != nil {
 			continue
 		}
-		if event.Kind == pb.AgentEventKind_AGENT_EVENT_KIND_PORT_EXPOSED {
+		switch event.Kind {
+		case pb.AgentEventKind_AGENT_EVENT_KIND_PORT_EXPOSED:
 			if portPayload := event.GetPortExposed(); portPayload != nil {
 				exposedPorts[portPayload.Port] = true
+			}
+		case pb.AgentEventKind_AGENT_EVENT_KIND_PORT_UNEXPOSED:
+			if portPayload := event.GetPortUnexposed(); portPayload != nil {
+				delete(exposedPorts, portPayload.Port)
 			}
 		}
 	}
@@ -2915,7 +2944,7 @@ func (m *Manager) CreateSnapshot(ctx context.Context, sessionID string, name str
 			continue // Skip partial (streaming) entries
 		}
 		var event pb.AgentEvent
-		if err := json.Unmarshal(e.Entry.Payload, &event); err == nil {
+		if err := protojson.Unmarshal(e.Entry.Payload, &event); err == nil {
 			if event.Kind == pb.AgentEventKind_AGENT_EVENT_KIND_MESSAGE {
 				messageEventCount++
 			}

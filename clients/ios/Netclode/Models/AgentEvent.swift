@@ -16,6 +16,7 @@ enum AgentEventKind: String, Codable, Sendable {
     case commandEnd = "command_end"
     case thinking
     case portExposed = "port_exposed"
+    case portUnexposed = "port_unexposed"
     case repoClone = "repo_clone"
     case agentDisconnected = "agent_disconnected"
     case agentReconnected = "agent_reconnected"
@@ -31,6 +32,7 @@ enum AgentEventKind: String, Codable, Sendable {
         case .commandEnd: "Command Finished"
         case .thinking: "Thinking"
         case .portExposed: "Port Exposed"
+        case .portUnexposed: "Port Removed"
         case .repoClone: "Repository"
         case .agentDisconnected: "Connection Lost"
         case .agentReconnected: "Reconnected"
@@ -44,6 +46,7 @@ enum AgentEventKind: String, Codable, Sendable {
         case .commandStart, .commandEnd: "terminal.fill"
         case .thinking: "brain.head.profile"
         case .portExposed: "network"
+        case .portUnexposed: "network.slash"
         case .repoClone: "arrow.down.circle.fill"
         case .agentDisconnected: "wifi.slash"
         case .agentReconnected: "wifi"
@@ -79,6 +82,7 @@ enum AgentEvent: Identifiable, Sendable {
     case commandEnd(CommandEndEvent)
     case thinking(ThinkingEvent)
     case portExposed(PortExposedEvent)
+    case portUnexposed(PortUnexposedEvent)
     case repoClone(RepoCloneEvent)
     case agentDisconnected(AgentDisconnectedEvent)
     case agentReconnected(AgentReconnectedEvent)
@@ -94,6 +98,7 @@ enum AgentEvent: Identifiable, Sendable {
         case .commandEnd(let e): e.id
         case .thinking(let e): e.id
         case .portExposed(let e): e.id
+        case .portUnexposed(let e): e.id
         case .repoClone(let e): e.id
         case .agentDisconnected(let e): e.id
         case .agentReconnected(let e): e.id
@@ -111,6 +116,7 @@ enum AgentEvent: Identifiable, Sendable {
         case .commandEnd: .commandEnd
         case .thinking: .thinking
         case .portExposed: .portExposed
+        case .portUnexposed: .portUnexposed
         case .repoClone: .repoClone
         case .agentDisconnected: .agentDisconnected
         case .agentReconnected: .agentReconnected
@@ -128,6 +134,7 @@ enum AgentEvent: Identifiable, Sendable {
         case .commandEnd(let e): e.timestamp
         case .thinking(let e): e.timestamp
         case .portExposed(let e): e.timestamp
+        case .portUnexposed(let e): e.timestamp
         case .repoClone(let e): e.timestamp
         case .agentDisconnected(let e): e.timestamp
         case .agentReconnected(let e): e.timestamp
@@ -237,6 +244,13 @@ struct PortExposedEvent: AgentEventProtocol {
     let port: Int
     let process: String?
     let previewUrl: String?
+}
+
+struct PortUnexposedEvent: AgentEventProtocol {
+    let id: UUID
+    var kind: AgentEventKind { .portUnexposed }
+    let timestamp: Date
+    let port: Int
 }
 
 /// Repository clone/pull progress event.

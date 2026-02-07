@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/angristan/netclode/services/control-plane/internal/k8s"
 	"github.com/angristan/netclode/services/control-plane/internal/storage"
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -30,6 +32,7 @@ type mockRuntime struct {
 	createdSandboxes []string
 	createdClaims    []string
 	createdServices  []string
+	exposedPorts     map[string]map[int]bool
 	labeledSandboxes map[string]string // sandboxName -> sessionID
 	readyCallbacks   map[string][]k8s.SandboxReadyCallback
 	previewHostname  string
@@ -39,6 +42,7 @@ type mockRuntime struct {
 func newMockRuntime() *mockRuntime {
 	return &mockRuntime{
 		sandboxes:        make(map[string]*k8s.SandboxStatusInfo),
+		exposedPorts:     make(map[string]map[int]bool),
 		labeledSandboxes: make(map[string]string),
 		readyCallbacks:   make(map[string][]k8s.SandboxReadyCallback),
 	}
@@ -137,6 +141,23 @@ func (m *mockRuntime) ListTailscaleServices(ctx context.Context) ([]string, erro
 }
 
 func (m *mockRuntime) ExposePort(ctx context.Context, sessionID string, port int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ports, exists := m.exposedPorts[sessionID]
+	if !exists {
+		ports = make(map[int]bool)
+		m.exposedPorts[sessionID] = ports
+	}
+	ports[port] = true
+	return nil
+}
+
+func (m *mockRuntime) UnexposePort(ctx context.Context, sessionID string, port int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ports, exists := m.exposedPorts[sessionID]; exists {
+		delete(ports, port)
+	}
 	return nil
 }
 
@@ -263,6 +284,7 @@ func (m *mockRuntime) Close() {
 type mockStorage struct {
 	mu          sync.Mutex
 	sessions    map[string]*pb.Session
+	streams     map[string][]storage.StreamEntryWithID
 	oauth       map[string]*storage.CodexOAuthSessionData
 	oauthGlobal *storage.CodexOAuthSessionData
 }
@@ -270,6 +292,7 @@ type mockStorage struct {
 func newMockStorage() *mockStorage {
 	return &mockStorage{
 		sessions: make(map[string]*pb.Session),
+		streams:  make(map[string][]storage.StreamEntryWithID),
 		oauth:    make(map[string]*storage.CodexOAuthSessionData),
 	}
 }
@@ -382,22 +405,97 @@ func (m *mockStorage) DeleteSession(ctx context.Context, id string) error {
 
 // Unified Stream methods (replaces messages, events, and notifications)
 func (m *mockStorage) AppendStreamEntry(ctx context.Context, sessionID string, entry *storage.StreamEntry) (string, error) {
-	return "0-0", nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	stream := m.streams[sessionID]
+	id := strconv.Itoa(len(stream)+1) + "-0"
+	entryCopy := *entry
+	m.streams[sessionID] = append(stream, storage.StreamEntryWithID{
+		ID:    id,
+		Entry: &entryCopy,
+	})
+	return id, nil
 }
 
 func (m *mockStorage) GetStreamEntries(ctx context.Context, sessionID string, afterID string, limit int) ([]storage.StreamEntryWithID, error) {
-	return nil, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.filterStreamEntriesLocked(sessionID, afterID, limit, nil), nil
 }
 
 func (m *mockStorage) GetStreamEntriesByTypes(ctx context.Context, sessionID string, afterID string, limit int, types []string) ([]storage.StreamEntryWithID, error) {
-	return nil, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.filterStreamEntriesLocked(sessionID, afterID, limit, types), nil
 }
 
 func (m *mockStorage) GetLastStreamID(ctx context.Context, sessionID string) (string, error) {
-	return "0-0", nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	stream := m.streams[sessionID]
+	if len(stream) == 0 {
+		return "0-0", nil
+	}
+	return stream[len(stream)-1].ID, nil
+}
+
+func (m *mockStorage) filterStreamEntriesLocked(sessionID, afterID string, limit int, types []string) []storage.StreamEntryWithID {
+	stream := m.streams[sessionID]
+	if len(stream) == 0 {
+		return nil
+	}
+
+	typeFilter := map[string]bool{}
+	for _, t := range types {
+		typeFilter[t] = true
+	}
+
+	afterSeq := 0
+	if afterID != "" && afterID != "0" {
+		afterSeq = parseStreamSeq(afterID)
+	}
+
+	result := make([]storage.StreamEntryWithID, 0, len(stream))
+	for _, e := range stream {
+		if parseStreamSeq(e.ID) <= afterSeq {
+			continue
+		}
+		if len(typeFilter) > 0 && !typeFilter[e.Entry.Type] {
+			continue
+		}
+		result = append(result, e)
+		if limit > 0 && len(result) >= limit {
+			break
+		}
+	}
+	return result
+}
+
+func parseStreamSeq(id string) int {
+	parts := strings.SplitN(id, "-", 2)
+	if len(parts) == 0 {
+		return 0
+	}
+	n, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func (m *mockStorage) TruncateStreamAfter(ctx context.Context, sessionID string, afterID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	afterSeq := parseStreamSeq(afterID)
+	stream := m.streams[sessionID]
+	filtered := stream[:0]
+	for _, e := range stream {
+		if parseStreamSeq(e.ID) <= afterSeq {
+			filtered = append(filtered, e)
+		}
+	}
+	m.streams[sessionID] = filtered
 	return nil
 }
 
@@ -1141,5 +1239,76 @@ func TestExposePort_FallsBackToShortHostnameOnLookupError(t *testing.T) {
 	expected := "http://sandbox-test123:1234"
 	if previewURL != expected {
 		t.Fatalf("expected preview URL %q, got %q", expected, previewURL)
+	}
+}
+
+func TestUnexposePort_RemovesPortAndPersistsEvent(t *testing.T) {
+	manager, runtime, _ := newTestManager(3)
+
+	if _, err := manager.ExposePort(context.Background(), "test123", 1234); err != nil {
+		t.Fatalf("ExposePort failed: %v", err)
+	}
+	if err := manager.UnexposePort(context.Background(), "test123", 1234); err != nil {
+		t.Fatalf("UnexposePort failed: %v", err)
+	}
+
+	runtime.mu.Lock()
+	_, stillExposed := runtime.exposedPorts["test123"][1234]
+	runtime.mu.Unlock()
+	if stillExposed {
+		t.Fatalf("expected port 1234 to be removed from runtime state")
+	}
+
+	entries, err := manager.storage.GetStreamEntriesByTypes(context.Background(), "test123", "0", 0, []string{storage.StreamEntryTypeEvent})
+	if err != nil {
+		t.Fatalf("GetStreamEntriesByTypes failed: %v", err)
+	}
+
+	foundUnexposed := false
+	for _, e := range entries {
+		var event pb.AgentEvent
+		if err := protojson.Unmarshal(e.Entry.Payload, &event); err != nil {
+			continue
+		}
+		if event.Kind == pb.AgentEventKind_AGENT_EVENT_KIND_PORT_UNEXPOSED {
+			if payload := event.GetPortUnexposed(); payload != nil && payload.Port == 1234 {
+				foundUnexposed = true
+				break
+			}
+		}
+	}
+
+	if !foundUnexposed {
+		t.Fatalf("expected persisted port_unexposed event for port 1234")
+	}
+}
+
+func TestRestoreExposedPorts_AppliesLatestExposeState(t *testing.T) {
+	manager, runtime, _ := newTestManager(3)
+
+	if _, err := manager.ExposePort(context.Background(), "test123", 1234); err != nil {
+		t.Fatalf("ExposePort(1234) failed: %v", err)
+	}
+	if _, err := manager.ExposePort(context.Background(), "test123", 5678); err != nil {
+		t.Fatalf("ExposePort(5678) failed: %v", err)
+	}
+	if err := manager.UnexposePort(context.Background(), "test123", 1234); err != nil {
+		t.Fatalf("UnexposePort(1234) failed: %v", err)
+	}
+
+	// Simulate fresh runtime state before resume restoration.
+	runtime.mu.Lock()
+	runtime.exposedPorts["test123"] = make(map[int]bool)
+	runtime.mu.Unlock()
+
+	manager.restoreExposedPorts(context.Background(), "test123")
+
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if !runtime.exposedPorts["test123"][5678] {
+		t.Fatalf("expected port 5678 to be restored")
+	}
+	if runtime.exposedPorts["test123"][1234] {
+		t.Fatalf("expected port 1234 to remain unexposed after restoration")
 	}
 }

@@ -68,6 +68,7 @@ enum ServerMessage: Sendable {
     case terminalOutput(sessionId: String, data: String)
 
     case portExposed(sessionId: String, port: Int, previewUrl: String)
+    case portUnexposed(sessionId: String, port: Int)
     case portError(sessionId: String, port: Int, error: String)
 
     case error(message: String)
@@ -180,6 +181,11 @@ extension ServerMessage: Decodable {
             let port = try container.decode(Int.self, forKey: .port)
             let previewUrl = try container.decode(String.self, forKey: .previewUrl)
             self = .portExposed(sessionId: sessionId, port: port, previewUrl: previewUrl)
+
+        case "port.unexposed":
+            let sessionId = try container.decode(String.self, forKey: .sessionId)
+            let port = try container.decode(Int.self, forKey: .port)
+            self = .portUnexposed(sessionId: sessionId, port: port)
 
         case "port.error":
             let sessionId = try container.decode(String.self, forKey: .sessionId)
@@ -404,6 +410,13 @@ private struct RawAgentEvent: Decodable {
                 port: port ?? 0,
                 process: process,
                 previewUrl: previewUrl
+            ))
+
+        case "port_unexposed":
+            return .portUnexposed(PortUnexposedEvent(
+                id: id,
+                timestamp: timestamp,
+                port: port ?? 0
             ))
 
         case "repo_clone":

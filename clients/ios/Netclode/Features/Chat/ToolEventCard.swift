@@ -1576,6 +1576,32 @@ struct PortExposedCard: View {
     }
 }
 
+struct PortUnexposedCard: View {
+    let event: PortUnexposedEvent
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            HStack(spacing: 4) {
+                Image(systemName: "network.slash")
+                    .font(.system(size: TypeScale.tiny, weight: .semibold))
+                Text(verbatim: "Port \(event.port) removed")
+                    .font(.system(size: TypeScale.caption, weight: .semibold, design: .monospaced))
+            }
+            .foregroundStyle(Theme.Colors.warning)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Theme.Colors.warning.opacity(0.15))
+            .clipShape(Capsule())
+
+            Spacer()
+        }
+        .padding(.horizontal, Theme.Spacing.sm)
+        .padding(.vertical, Theme.Spacing.xs)
+        .codeCardBackground()
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
+    }
+}
+
 // MARK: - Repo Clone Card
 
 struct RepoCloneCard: View {
@@ -2039,4 +2065,3 @@ struct SystemEventCard: View {
     .padding()
     .background(Theme.Colors.background)
 }
-

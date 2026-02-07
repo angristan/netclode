@@ -40,6 +40,7 @@ const (
 	AgentEventKind_AGENT_EVENT_KIND_REPO_CLONE         AgentEventKind = 8  // Repository clone progress
 	AgentEventKind_AGENT_EVENT_KIND_AGENT_DISCONNECTED AgentEventKind = 9  // Agent disconnected unexpectedly
 	AgentEventKind_AGENT_EVENT_KIND_AGENT_RECONNECTED  AgentEventKind = 10 // Agent reconnected after disconnect
+	AgentEventKind_AGENT_EVENT_KIND_PORT_UNEXPOSED     AgentEventKind = 11 // Port exposure was removed
 )
 
 // Enum value maps for AgentEventKind.
@@ -56,6 +57,7 @@ var (
 		8:  "AGENT_EVENT_KIND_REPO_CLONE",
 		9:  "AGENT_EVENT_KIND_AGENT_DISCONNECTED",
 		10: "AGENT_EVENT_KIND_AGENT_RECONNECTED",
+		11: "AGENT_EVENT_KIND_PORT_UNEXPOSED",
 	}
 	AgentEventKind_value = map[string]int32{
 		"AGENT_EVENT_KIND_UNSPECIFIED":        0,
@@ -69,6 +71,7 @@ var (
 		"AGENT_EVENT_KIND_REPO_CLONE":         8,
 		"AGENT_EVENT_KIND_AGENT_DISCONNECTED": 9,
 		"AGENT_EVENT_KIND_AGENT_RECONNECTED":  10,
+		"AGENT_EVENT_KIND_PORT_UNEXPOSED":     11,
 	}
 )
 
@@ -222,6 +225,7 @@ type AgentEvent struct {
 	//	*AgentEvent_ToolEnd
 	//	*AgentEvent_PortExposed
 	//	*AgentEvent_RepoClone
+	//	*AgentEvent_PortUnexposed
 	Payload       isAgentEvent_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -350,6 +354,15 @@ func (x *AgentEvent) GetRepoClone() *RepoClonePayload {
 	return nil
 }
 
+func (x *AgentEvent) GetPortUnexposed() *PortUnexposedPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentEvent_PortUnexposed); ok {
+			return x.PortUnexposed
+		}
+	}
+	return nil
+}
+
 type isAgentEvent_Payload interface {
 	isAgentEvent_Payload()
 }
@@ -386,6 +399,10 @@ type AgentEvent_RepoClone struct {
 	RepoClone *RepoClonePayload `protobuf:"bytes,10,opt,name=repo_clone,json=repoClone,proto3,oneof"`
 }
 
+type AgentEvent_PortUnexposed struct {
+	PortUnexposed *PortUnexposedPayload `protobuf:"bytes,11,opt,name=port_unexposed,json=portUnexposed,proto3,oneof"`
+}
+
 func (*AgentEvent_Message) isAgentEvent_Payload() {}
 
 func (*AgentEvent_Thinking) isAgentEvent_Payload() {}
@@ -401,6 +418,8 @@ func (*AgentEvent_ToolEnd) isAgentEvent_Payload() {}
 func (*AgentEvent_PortExposed) isAgentEvent_Payload() {}
 
 func (*AgentEvent_RepoClone) isAgentEvent_Payload() {}
+
+func (*AgentEvent_PortUnexposed) isAgentEvent_Payload() {}
 
 // MessagePayload contains data for user/assistant messages.
 type MessagePayload struct {
@@ -801,6 +820,51 @@ func (x *PortExposedPayload) GetPreviewUrl() string {
 	return ""
 }
 
+// PortUnexposedPayload contains data for port removal events.
+type PortUnexposedPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Port          int32                  `protobuf:"varint,1,opt,name=port,proto3" json:"port,omitempty"` // The port number no longer exposed
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PortUnexposedPayload) Reset() {
+	*x = PortUnexposedPayload{}
+	mi := &file_netclode_v1_events_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PortUnexposedPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PortUnexposedPayload) ProtoMessage() {}
+
+func (x *PortUnexposedPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_netclode_v1_events_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PortUnexposedPayload.ProtoReflect.Descriptor instead.
+func (*PortUnexposedPayload) Descriptor() ([]byte, []int) {
+	return file_netclode_v1_events_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *PortUnexposedPayload) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
 // RepoClonePayload contains data for repository clone progress events.
 type RepoClonePayload struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -813,7 +877,7 @@ type RepoClonePayload struct {
 
 func (x *RepoClonePayload) Reset() {
 	*x = RepoClonePayload{}
-	mi := &file_netclode_v1_events_proto_msgTypes[8]
+	mi := &file_netclode_v1_events_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -825,7 +889,7 @@ func (x *RepoClonePayload) String() string {
 func (*RepoClonePayload) ProtoMessage() {}
 
 func (x *RepoClonePayload) ProtoReflect() protoreflect.Message {
-	mi := &file_netclode_v1_events_proto_msgTypes[8]
+	mi := &file_netclode_v1_events_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -838,7 +902,7 @@ func (x *RepoClonePayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepoClonePayload.ProtoReflect.Descriptor instead.
 func (*RepoClonePayload) Descriptor() ([]byte, []int) {
-	return file_netclode_v1_events_proto_rawDescGZIP(), []int{8}
+	return file_netclode_v1_events_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *RepoClonePayload) GetRepo() string {
@@ -866,7 +930,7 @@ var File_netclode_v1_events_proto protoreflect.FileDescriptor
 
 const file_netclode_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"\x18netclode/v1/events.proto\x12\vnetclode.v1\x1a\x1cgoogle/protobuf/struct.proto\"\xe7\x04\n" +
+	"\x18netclode/v1/events.proto\x12\vnetclode.v1\x1a\x1cgoogle/protobuf/struct.proto\"\xb3\x05\n" +
 	"\n" +
 	"AgentEvent\x12/\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1b.netclode.v1.AgentEventKindR\x04kind\x12%\n" +
@@ -883,7 +947,8 @@ const file_netclode_v1_events_proto_rawDesc = "" +
 	"\fport_exposed\x18\t \x01(\v2\x1f.netclode.v1.PortExposedPayloadH\x00R\vportExposed\x12>\n" +
 	"\n" +
 	"repo_clone\x18\n" +
-	" \x01(\v2\x1d.netclode.v1.RepoClonePayloadH\x00R\trepoCloneB\t\n" +
+	" \x01(\v2\x1d.netclode.v1.RepoClonePayloadH\x00R\trepoClone\x12J\n" +
+	"\x0eport_unexposed\x18\v \x01(\v2!.netclode.v1.PortUnexposedPayloadH\x00R\rportUnexposedB\t\n" +
 	"\apayload\"X\n" +
 	"\x0eMessagePayload\x12,\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x18.netclode.v1.MessageRoleR\x04role\x12\x18\n" +
@@ -921,11 +986,13 @@ const file_netclode_v1_events_proto_rawDesc = "" +
 	"previewUrl\x88\x01\x01B\n" +
 	"\n" +
 	"\b_processB\x0e\n" +
-	"\f_preview_url\"s\n" +
+	"\f_preview_url\"*\n" +
+	"\x14PortUnexposedPayload\x12\x12\n" +
+	"\x04port\x18\x01 \x01(\x05R\x04port\"s\n" +
 	"\x10RepoClonePayload\x12\x12\n" +
 	"\x04repo\x18\x01 \x01(\tR\x04repo\x121\n" +
 	"\x05stage\x18\x02 \x01(\x0e2\x1b.netclode.v1.RepoCloneStageR\x05stage\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage*\x87\x03\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage*\xac\x03\n" +
 	"\x0eAgentEventKind\x12 \n" +
 	"\x1cAGENT_EVENT_KIND_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18AGENT_EVENT_KIND_MESSAGE\x10\x01\x12\x1d\n" +
@@ -938,7 +1005,8 @@ const file_netclode_v1_events_proto_rawDesc = "" +
 	"\x1bAGENT_EVENT_KIND_REPO_CLONE\x10\b\x12'\n" +
 	"#AGENT_EVENT_KIND_AGENT_DISCONNECTED\x10\t\x12&\n" +
 	"\"AGENT_EVENT_KIND_AGENT_RECONNECTED\x10\n" +
-	"*^\n" +
+	"\x12#\n" +
+	"\x1fAGENT_EVENT_KIND_PORT_UNEXPOSED\x10\v*^\n" +
 	"\vMessageRole\x12\x1c\n" +
 	"\x18MESSAGE_ROLE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11MESSAGE_ROLE_USER\x10\x01\x12\x1a\n" +
@@ -964,21 +1032,22 @@ func file_netclode_v1_events_proto_rawDescGZIP() []byte {
 }
 
 var file_netclode_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_netclode_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_netclode_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_netclode_v1_events_proto_goTypes = []any{
-	(AgentEventKind)(0),        // 0: netclode.v1.AgentEventKind
-	(MessageRole)(0),           // 1: netclode.v1.MessageRole
-	(RepoCloneStage)(0),        // 2: netclode.v1.RepoCloneStage
-	(*AgentEvent)(nil),         // 3: netclode.v1.AgentEvent
-	(*MessagePayload)(nil),     // 4: netclode.v1.MessagePayload
-	(*ThinkingPayload)(nil),    // 5: netclode.v1.ThinkingPayload
-	(*ToolStartPayload)(nil),   // 6: netclode.v1.ToolStartPayload
-	(*ToolInputPayload)(nil),   // 7: netclode.v1.ToolInputPayload
-	(*ToolOutputPayload)(nil),  // 8: netclode.v1.ToolOutputPayload
-	(*ToolEndPayload)(nil),     // 9: netclode.v1.ToolEndPayload
-	(*PortExposedPayload)(nil), // 10: netclode.v1.PortExposedPayload
-	(*RepoClonePayload)(nil),   // 11: netclode.v1.RepoClonePayload
-	(*structpb.Struct)(nil),    // 12: google.protobuf.Struct
+	(AgentEventKind)(0),          // 0: netclode.v1.AgentEventKind
+	(MessageRole)(0),             // 1: netclode.v1.MessageRole
+	(RepoCloneStage)(0),          // 2: netclode.v1.RepoCloneStage
+	(*AgentEvent)(nil),           // 3: netclode.v1.AgentEvent
+	(*MessagePayload)(nil),       // 4: netclode.v1.MessagePayload
+	(*ThinkingPayload)(nil),      // 5: netclode.v1.ThinkingPayload
+	(*ToolStartPayload)(nil),     // 6: netclode.v1.ToolStartPayload
+	(*ToolInputPayload)(nil),     // 7: netclode.v1.ToolInputPayload
+	(*ToolOutputPayload)(nil),    // 8: netclode.v1.ToolOutputPayload
+	(*ToolEndPayload)(nil),       // 9: netclode.v1.ToolEndPayload
+	(*PortExposedPayload)(nil),   // 10: netclode.v1.PortExposedPayload
+	(*PortUnexposedPayload)(nil), // 11: netclode.v1.PortUnexposedPayload
+	(*RepoClonePayload)(nil),     // 12: netclode.v1.RepoClonePayload
+	(*structpb.Struct)(nil),      // 13: google.protobuf.Struct
 }
 var file_netclode_v1_events_proto_depIdxs = []int32{
 	0,  // 0: netclode.v1.AgentEvent.kind:type_name -> netclode.v1.AgentEventKind
@@ -989,15 +1058,16 @@ var file_netclode_v1_events_proto_depIdxs = []int32{
 	8,  // 5: netclode.v1.AgentEvent.tool_output:type_name -> netclode.v1.ToolOutputPayload
 	9,  // 6: netclode.v1.AgentEvent.tool_end:type_name -> netclode.v1.ToolEndPayload
 	10, // 7: netclode.v1.AgentEvent.port_exposed:type_name -> netclode.v1.PortExposedPayload
-	11, // 8: netclode.v1.AgentEvent.repo_clone:type_name -> netclode.v1.RepoClonePayload
-	1,  // 9: netclode.v1.MessagePayload.role:type_name -> netclode.v1.MessageRole
-	12, // 10: netclode.v1.ToolInputPayload.input:type_name -> google.protobuf.Struct
-	2,  // 11: netclode.v1.RepoClonePayload.stage:type_name -> netclode.v1.RepoCloneStage
-	12, // [12:12] is the sub-list for method output_type
-	12, // [12:12] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	12, // 8: netclode.v1.AgentEvent.repo_clone:type_name -> netclode.v1.RepoClonePayload
+	11, // 9: netclode.v1.AgentEvent.port_unexposed:type_name -> netclode.v1.PortUnexposedPayload
+	1,  // 10: netclode.v1.MessagePayload.role:type_name -> netclode.v1.MessageRole
+	13, // 11: netclode.v1.ToolInputPayload.input:type_name -> google.protobuf.Struct
+	2,  // 12: netclode.v1.RepoClonePayload.stage:type_name -> netclode.v1.RepoCloneStage
+	13, // [13:13] is the sub-list for method output_type
+	13, // [13:13] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_netclode_v1_events_proto_init() }
@@ -1014,6 +1084,7 @@ func file_netclode_v1_events_proto_init() {
 		(*AgentEvent_ToolEnd)(nil),
 		(*AgentEvent_PortExposed)(nil),
 		(*AgentEvent_RepoClone)(nil),
+		(*AgentEvent_PortUnexposed)(nil),
 	}
 	file_netclode_v1_events_proto_msgTypes[3].OneofWrappers = []any{}
 	file_netclode_v1_events_proto_msgTypes[4].OneofWrappers = []any{}
@@ -1026,7 +1097,7 @@ func file_netclode_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_netclode_v1_events_proto_rawDesc), len(file_netclode_v1_events_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

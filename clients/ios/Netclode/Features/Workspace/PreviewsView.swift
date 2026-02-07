@@ -10,19 +10,25 @@ struct PreviewsView: View {
     @State private var portToExpose = ""
     @State private var isContentVisible = false
 
-    /// All port_exposed events for this session
-    var portEvents: [PortExposedEvent] {
-        eventStore.events(for: sessionId).compactMap { event in
-            if case .portExposed(let e) = event {
-                return e
+    /// Currently active exposed ports derived from port_exposed/port_unexposed event history.
+    var activePortEvents: [PortExposedEvent] {
+        var byPort: [Int: PortExposedEvent] = [:]
+        for event in eventStore.events(for: sessionId) {
+            switch event {
+            case .portExposed(let e):
+                byPort[e.port] = e
+            case .portUnexposed(let e):
+                byPort.removeValue(forKey: e.port)
+            default:
+                break
             }
-            return nil
         }
+        return byPort.values.sorted { $0.port < $1.port }
     }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            if portEvents.isEmpty {
+            if activePortEvents.isEmpty {
                 ContentUnavailableView {
                     Label("No Previews", systemImage: "globe")
                 } description: {
@@ -31,8 +37,10 @@ struct PreviewsView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: Theme.Spacing.md) {
-                        ForEach(portEvents) { event in
-                            PreviewCard(event: event)
+                        ForEach(activePortEvents) { event in
+                            PreviewCard(event: event) { port in
+                                connectService.send(.portUnexpose(sessionId: sessionId, port: port))
+                            }
                         }
                     }
                     .padding()
@@ -70,6 +78,7 @@ struct PreviewsView: View {
 
 struct PreviewCard: View {
     let event: PortExposedEvent
+    let onRemove: (Int) -> Void
 
     var body: some View {
         GlassCard {
@@ -103,6 +112,11 @@ struct PreviewCard: View {
                                 UIPasteboard.general.string = url
                             } label: {
                                 Label("Copy URL", systemImage: "doc.on.doc")
+                            }
+                            Button(role: .destructive) {
+                                onRemove(event.port)
+                            } label: {
+                                Label("Remove Port", systemImage: "trash")
                             }
                         } label: {
                             HStack(spacing: 4) {

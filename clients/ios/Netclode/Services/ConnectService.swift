@@ -464,6 +464,9 @@ final class ConnectService {
             
         case .portExposed(let msg):
             return .portExposed(sessionId: msg.sessionID, port: Int(msg.port), previewUrl: msg.previewURL)
+
+        case .portUnexposed(let msg):
+            return .portUnexposed(sessionId: msg.sessionID, port: Int(msg.port))
             
         case .githubRepos(let msg):
             return .githubRepos(repos: msg.repos.map { convertGitHubRepo($0) })
@@ -754,6 +757,14 @@ final class ConnectService {
                 process: payload.hasProcess ? payload.process : nil,
                 previewUrl: payload.hasPreviewURL ? payload.previewURL : nil
             ))
+
+        case .portUnexposed:
+            let payload = proto.portUnexposed
+            return .portUnexposed(PortUnexposedEvent(
+                id: id,
+                timestamp: timestamp,
+                port: Int(payload.port)
+            ))
             
         case .repoClone:
             let payload = proto.repoClone
@@ -910,7 +921,7 @@ final class ConnectService {
                     )
                 }
                 
-            case .thinking, .toolStart, .toolInput, .toolOutput, .toolEnd, .portExposed, .repoClone, .agentDisconnected, .agentReconnected:
+            case .thinking, .toolStart, .toolInput, .toolOutput, .toolEnd, .portExposed, .portUnexposed, .repoClone, .agentDisconnected, .agentReconnected:
                 let timestamp = entry.hasTimestamp ? entry.timestamp.date : Date()
                 let event = convertAgentEvent(agentEvent, timestamp: timestamp, partial: entry.partial)
                 return .agentEvent(sessionId: sessionId, event: event)
@@ -1020,6 +1031,11 @@ final class ConnectService {
             port = Int(payload.port)
             process = payload.hasProcess ? payload.process : nil
             previewUrl = payload.hasPreviewURL ? payload.previewURL : nil
+
+        case .portUnexposed:
+            kind = "port_unexposed"
+            let payload = proto.portUnexposed
+            port = Int(payload.port)
             
         case .repoClone:
             kind = "repo_clone"
@@ -1369,6 +1385,12 @@ final class ConnectService {
             req.sessionID = sessionId
             req.port = Int32(port)
             proto.message = .exposePort(req)
+
+        case .portUnexpose(let sessionId, let port):
+            var req = Netclode_V1_UnexposePortRequest()
+            req.sessionID = sessionId
+            req.port = Int32(port)
+            proto.message = .unexposePort(req)
             
         case .sessionOpen(let id, let lastMessageId, let lastNotificationId):
             var req = Netclode_V1_OpenSessionRequest()

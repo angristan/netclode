@@ -193,6 +193,8 @@ func (c *ConnectConnection) handleMessage(ctx context.Context, msg *pb.ClientMes
 		return c.handleSync(ctx)
 	case *pb.ClientMessage_ExposePort:
 		return c.handlePortExpose(ctx, m.ExposePort.SessionId, int(m.ExposePort.Port))
+	case *pb.ClientMessage_UnexposePort:
+		return c.handlePortUnexpose(ctx, m.UnexposePort.SessionId, int(m.UnexposePort.Port))
 	case *pb.ClientMessage_ListGithubRepos:
 		return c.handleGitHubReposList(ctx)
 	case *pb.ClientMessage_GitStatus:
@@ -649,6 +651,28 @@ func (c *ConnectConnection) handlePortExpose(ctx context.Context, sessionID stri
 				SessionId:  sessionID,
 				Port:       int32(port),
 				PreviewUrl: previewURL,
+			},
+		},
+	})
+}
+
+func (c *ConnectConnection) handlePortUnexpose(ctx context.Context, sessionID string, port int) error {
+	if sessionID == "" {
+		return c.send(makeErrorResponse(sessionID, "PORT_ERROR", "sessionId is required"))
+	}
+	if port < 1 || port > 65535 {
+		return c.send(makeErrorResponse(sessionID, "PORT_ERROR", "port must be between 1 and 65535"))
+	}
+
+	if err := c.manager.UnexposePort(ctx, sessionID, port); err != nil {
+		return c.send(makeErrorResponse(sessionID, "PORT_ERROR", err.Error()))
+	}
+
+	return c.send(&pb.ServerMessage{
+		Message: &pb.ServerMessage_PortUnexposed{
+			PortUnexposed: &pb.PortUnexposedResponse{
+				SessionId: sessionID,
+				Port:      int32(port),
 			},
 		},
 	})

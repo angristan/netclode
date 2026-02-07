@@ -268,6 +268,9 @@ final class MessageRouter {
         case .portExposed(let sessionId, let port, let previewUrl):
             print("[MessageRouter] Port \(port) exposed for session \(sessionId): \(previewUrl)")
 
+        case .portUnexposed(let sessionId, let port):
+            print("[MessageRouter] Port \(port) unexposed for session \(sessionId)")
+
         case .portError(let sessionId, let port, let error):
             print("[MessageRouter] Failed to expose port \(port) for session \(sessionId): \(error)")
 

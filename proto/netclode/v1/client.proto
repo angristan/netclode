@@ -45,6 +45,7 @@ message ClientMessage {
     CodexAuthStartRequest codex_auth_start = 23;
     CodexAuthStatusRequest codex_auth_status = 24;
     CodexAuthLogoutRequest codex_auth_logout = 25;
+    UnexposePortRequest unexpose_port = 26;
   }
 }
 
@@ -80,6 +81,7 @@ message ServerMessage {
     CodexAuthStartedResponse codex_auth_started = 25;
     CodexAuthStatusResponse codex_auth_status = 26;
     CodexAuthLoggedOutResponse codex_auth_logged_out = 27;
+    PortUnexposedResponse port_unexposed = 28;
   }
 }
 
@@ -172,6 +174,12 @@ message TerminalResizeRequest {
 }
 
 message ExposePortRequest {
+  optional string request_id = 1;
+  string session_id = 2;
+  int32 port = 3;
+}
+
+message UnexposePortRequest {
   optional string request_id = 1;
   string session_id = 2;
   int32 port = 3;
@@ -295,6 +303,12 @@ message PortExposedResponse {
   int32 port = 2;
   string preview_url = 3;
   optional string request_id = 4;
+}
+
+message PortUnexposedResponse {
+  string session_id = 1;
+  int32 port = 2;
+  optional string request_id = 3;
 }
 
 message GitHubReposResponse {

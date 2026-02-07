@@ -491,6 +491,9 @@ struct ChatView: View {
         case .portExposed(let e):
             PortExposedCard(event: e)
 
+        case .portUnexposed(let e):
+            PortUnexposedCard(event: e)
+
         case .repoClone(let e):
             RepoCloneCard(event: e)
 
@@ -545,6 +548,9 @@ struct ChatView: View {
                 result.append(GroupedEvent(id: e.id, event: event, timestamp: e.timestamp))
 
             case .portExposed(let e):
+                result.append(GroupedEvent(id: e.id, event: event, timestamp: e.timestamp))
+
+            case .portUnexposed(let e):
                 result.append(GroupedEvent(id: e.id, event: event, timestamp: e.timestamp))
 
             case .repoClone(let e):

@@ -975,6 +975,104 @@ func (r *k8sRuntime) ExposePort(ctx context.Context, sessionID string, port int)
 	return nil
 }
 
+// UnexposePort removes a previously exposed port from the Tailscale service and NetworkPolicy.
+// This is called when a user removes a preview port.
+func (r *k8sRuntime) UnexposePort(ctx context.Context, sessionID string, port int) error {
+	tailscaleSvcName := fmt.Sprintf("ts-%s", sessionID)
+	networkPolicyName := fmt.Sprintf("sess-%s-network-policy", sessionID)
+
+	// 1. Remove port from the Tailscale service
+	svc, err := r.clientset.CoreV1().Services(r.namespace).Get(ctx, tailscaleSvcName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get tailscale service: %w", err)
+	}
+
+	removedServicePort := false
+	servicePorts := make([]corev1.ServicePort, 0, len(svc.Spec.Ports))
+	for _, p := range svc.Spec.Ports {
+		if p.Port == int32(port) {
+			removedServicePort = true
+			continue
+		}
+		servicePorts = append(servicePorts, p)
+	}
+
+	if removedServicePort {
+		svc.Spec.Ports = servicePorts
+		if _, err := r.clientset.CoreV1().Services(r.namespace).Update(ctx, svc, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("update service: %w", err)
+		}
+		slog.Info("Removed port from Tailscale service", "sessionID", sessionID, "port", port)
+	}
+
+	// 2. Remove port from the NetworkPolicy
+	np, err := r.clientset.NetworkingV1().NetworkPolicies(r.namespace).Get(ctx, networkPolicyName, metav1.GetOptions{})
+	if err != nil {
+		// NetworkPolicy might not exist (e.g., if sandbox was created without one)
+		if errors.IsNotFound(err) {
+			slog.Warn("NetworkPolicy not found, skipping", "sessionID", sessionID, "name", networkPolicyName)
+			return nil
+		}
+		return fmt.Errorf("get network policy: %w", err)
+	}
+
+	removedPolicyPort := false
+	updatedIngress := make([]networkingv1.NetworkPolicyIngressRule, 0, len(np.Spec.Ingress))
+	for _, rule := range np.Spec.Ingress {
+		isTailscaleRule := false
+		for _, from := range rule.From {
+			if from.NamespaceSelector != nil &&
+				from.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"] == "tailscale" {
+				isTailscaleRule = true
+				break
+			}
+		}
+
+		if !isTailscaleRule {
+			updatedIngress = append(updatedIngress, rule)
+			continue
+		}
+
+		filteredPorts := make([]networkingv1.NetworkPolicyPort, 0, len(rule.Ports))
+		removedFromThisRule := false
+		for _, p := range rule.Ports {
+			if p.Port != nil && p.Port.IntValue() == port {
+				removedFromThisRule = true
+				continue
+			}
+			filteredPorts = append(filteredPorts, p)
+		}
+
+		if !removedFromThisRule {
+			updatedIngress = append(updatedIngress, rule)
+			continue
+		}
+
+		removedPolicyPort = true
+		if len(filteredPorts) == 0 {
+			// Rule only allowed this port; remove the whole rule.
+			continue
+		}
+
+		rule.Ports = filteredPorts
+		updatedIngress = append(updatedIngress, rule)
+	}
+
+	if removedPolicyPort {
+		np.Spec.Ingress = updatedIngress
+		if _, err := r.clientset.NetworkingV1().NetworkPolicies(r.namespace).Update(ctx, np, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("update network policy: %w", err)
+		}
+		slog.Info("Removed port from NetworkPolicy", "sessionID", sessionID, "port", port)
+	}
+
+	if !removedServicePort && !removedPolicyPort {
+		slog.Info("Port was not exposed; no unexpose changes applied", "sessionID", sessionID, "port", port)
+	}
+
+	return nil
+}
+
 // GetSandboxPreviewHostname returns the best available hostname for sandbox previews.
 // It prefers the explicit Tailscale service hostname, and if that hostname is short
 // (for example `sandbox-abc123`), it appends the tailnet DNS suffix inferred from
