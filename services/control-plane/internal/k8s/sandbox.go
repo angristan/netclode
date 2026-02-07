@@ -56,6 +56,8 @@ type k8sRuntime struct {
 	claimCache     map[string]*SandboxClaim
 }
 
+const controlPlaneIngressName = "control-plane"
+
 func newK8sRuntime(cfg *config.Config) (*k8sRuntime, error) {
 	restConfig, err := rest.InClusterConfig()
 	if err != nil {
@@ -971,6 +973,50 @@ func (r *k8sRuntime) ExposePort(ctx context.Context, sessionID string, port int)
 	}
 
 	return nil
+}
+
+// GetSandboxPreviewHostname returns the best available hostname for sandbox previews.
+// It prefers the explicit Tailscale service hostname, and if that hostname is short
+// (for example `sandbox-abc123`), it appends the tailnet DNS suffix inferred from
+// the control-plane ingress hostname.
+func (r *k8sRuntime) GetSandboxPreviewHostname(ctx context.Context, sessionID string) (string, error) {
+	fallbackHost := fmt.Sprintf("sandbox-%s", sessionID)
+	tailscaleSvcName := fmt.Sprintf("ts-%s", sessionID)
+
+	svc, err := r.clientset.CoreV1().Services(r.namespace).Get(ctx, tailscaleSvcName, metav1.GetOptions{})
+	if err != nil {
+		return fallbackHost, fmt.Errorf("get tailscale service: %w", err)
+	}
+
+	host := strings.TrimSpace(svc.Annotations["tailscale.com/hostname"])
+	if host == "" {
+		host = fallbackHost
+	}
+
+	// If already fully-qualified, use as-is.
+	if strings.Contains(host, ".") {
+		return host, nil
+	}
+
+	ingress, err := r.clientset.NetworkingV1().Ingresses(r.namespace).Get(ctx, controlPlaneIngressName, metav1.GetOptions{})
+	if err != nil {
+		return host, fmt.Errorf("get control-plane ingress: %w", err)
+	}
+	if len(ingress.Status.LoadBalancer.Ingress) == 0 {
+		return host, fmt.Errorf("control-plane ingress has no load balancer hostname")
+	}
+
+	ingressHost := strings.TrimSpace(ingress.Status.LoadBalancer.Ingress[0].Hostname)
+	if ingressHost == "" {
+		return host, fmt.Errorf("control-plane ingress load balancer hostname is empty")
+	}
+
+	_, tailnetSuffix, ok := strings.Cut(ingressHost, ".")
+	if !ok || tailnetSuffix == "" {
+		return host, fmt.Errorf("cannot infer tailnet suffix from ingress hostname %q", ingressHost)
+	}
+
+	return fmt.Sprintf("%s.%s", host, tailnetSuffix), nil
 }
 
 // ConfigureNetwork enables or disables internet access for a sandbox.

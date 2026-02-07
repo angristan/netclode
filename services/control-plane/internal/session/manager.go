@@ -1094,7 +1094,12 @@ func (m *Manager) ExposePort(ctx context.Context, sessionID string, port int) (s
 		return "", err
 	}
 
-	previewURL := fmt.Sprintf("http://sandbox-%s:%d", sessionID, port)
+	previewHost, err := m.k8s.GetSandboxPreviewHostname(ctx, sessionID)
+	if err != nil {
+		slog.Warn("Failed to resolve sandbox preview hostname, using fallback", "sessionID", sessionID, "error", err)
+		previewHost = fmt.Sprintf("sandbox-%s", sessionID)
+	}
+	previewURL := fmt.Sprintf("http://%s:%d", previewHost, port)
 	port32 := int32(port)
 
 	// Create and persist the port_exposed event

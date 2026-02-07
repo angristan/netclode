@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,6 +32,8 @@ type mockRuntime struct {
 	createdServices  []string
 	labeledSandboxes map[string]string // sandboxName -> sessionID
 	readyCallbacks   map[string][]k8s.SandboxReadyCallback
+	previewHostname  string
+	previewHostErr   error
 }
 
 func newMockRuntime() *mockRuntime {
@@ -135,6 +138,13 @@ func (m *mockRuntime) ListTailscaleServices(ctx context.Context) ([]string, erro
 
 func (m *mockRuntime) ExposePort(ctx context.Context, sessionID string, port int) error {
 	return nil
+}
+
+func (m *mockRuntime) GetSandboxPreviewHostname(ctx context.Context, sessionID string) (string, error) {
+	if m.previewHostname != "" {
+		return m.previewHostname, m.previewHostErr
+	}
+	return "sandbox-" + sessionID, m.previewHostErr
 }
 
 func (m *mockRuntime) CreateOrLabelPoolSandbox(ctx context.Context, sessionID string, fromPool bool, env map[string]string) error {
@@ -1101,5 +1111,35 @@ func TestHandleAgentResponse_SystemMessageNonInterruptNoStatusChange(t *testing.
 
 	if got := manager.sessions["sess-system"].Session.Status; got != pb.SessionStatus_SESSION_STATUS_RUNNING {
 		t.Fatalf("expected status to stay RUNNING for non-interrupt system message, got %s", got)
+	}
+}
+
+func TestExposePort_UsesResolvedPreviewHostname(t *testing.T) {
+	manager, runtime, _ := newTestManager(3)
+	runtime.previewHostname = "sandbox-test123.dolly-grouse.ts.net"
+
+	previewURL, err := manager.ExposePort(context.Background(), "test123", 1234)
+	if err != nil {
+		t.Fatalf("ExposePort failed: %v", err)
+	}
+
+	expected := "http://sandbox-test123.dolly-grouse.ts.net:1234"
+	if previewURL != expected {
+		t.Fatalf("expected preview URL %q, got %q", expected, previewURL)
+	}
+}
+
+func TestExposePort_FallsBackToShortHostnameOnLookupError(t *testing.T) {
+	manager, runtime, _ := newTestManager(3)
+	runtime.previewHostErr = errors.New("lookup failed")
+
+	previewURL, err := manager.ExposePort(context.Background(), "test123", 1234)
+	if err != nil {
+		t.Fatalf("ExposePort failed: %v", err)
+	}
+
+	expected := "http://sandbox-test123:1234"
+	if previewURL != expected {
+		t.Fatalf("expected preview URL %q, got %q", expected, previewURL)
 	}
 }

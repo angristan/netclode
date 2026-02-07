@@ -42,6 +42,7 @@ type Runtime interface {
 	DeleteSandboxService(ctx context.Context, sessionID string) error
 	ListTailscaleServices(ctx context.Context) ([]string, error) // Returns session IDs with ts-* services
 	ExposePort(ctx context.Context, sessionID string, port int) error
+	GetSandboxPreviewHostname(ctx context.Context, sessionID string) (string, error)
 
 	// Network policy operations
 	ConfigureNetwork(ctx context.Context, sessionID string, networkEnabled bool) error
