@@ -1051,3 +1051,55 @@ func TestGetAllowedSecretForHost_CodexHasNoProxySecret(t *testing.T) {
 		t.Fatalf("expected no proxy secret mapping for codex, got secretKey=%q placeholder=%q", secretKey, placeholder)
 	}
 }
+
+func TestHandleAgentResponse_SystemInterruptedSetsReady(t *testing.T) {
+	manager, _, _ := newTestManager(3)
+	now := time.Now().UTC()
+	addSession(manager, "sess-interrupt", pb.SessionStatus_SESSION_STATUS_RUNNING, now)
+
+	state := manager.sessions["sess-interrupt"]
+	state.CurrentMessageID = "msg_123"
+	state.ContentBuilder.WriteString("partial content")
+	state.OriginalPrompt = "long running prompt"
+
+	err := manager.HandleAgentResponse(context.Background(), "sess-interrupt", &pb.AgentStreamResponse{
+		Response: &pb.AgentStreamResponse_SystemMessage{
+			SystemMessage: &pb.AgentSystemMessage{Message: "interrupted"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("HandleAgentResponse failed: %v", err)
+	}
+
+	if got := manager.sessions["sess-interrupt"].Session.Status; got != pb.SessionStatus_SESSION_STATUS_READY {
+		t.Fatalf("expected status READY after interrupt, got %s", got)
+	}
+	if got := state.CurrentMessageID; got != "" {
+		t.Fatalf("expected CurrentMessageID to be reset, got %q", got)
+	}
+	if got := state.ContentBuilder.String(); got != "" {
+		t.Fatalf("expected ContentBuilder to be reset, got %q", got)
+	}
+	if got := state.OriginalPrompt; got != "" {
+		t.Fatalf("expected OriginalPrompt to be reset, got %q", got)
+	}
+}
+
+func TestHandleAgentResponse_SystemMessageNonInterruptNoStatusChange(t *testing.T) {
+	manager, _, _ := newTestManager(3)
+	now := time.Now().UTC()
+	addSession(manager, "sess-system", pb.SessionStatus_SESSION_STATUS_RUNNING, now)
+
+	err := manager.HandleAgentResponse(context.Background(), "sess-system", &pb.AgentStreamResponse{
+		Response: &pb.AgentStreamResponse_SystemMessage{
+			SystemMessage: &pb.AgentSystemMessage{Message: "ready"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("HandleAgentResponse failed: %v", err)
+	}
+
+	if got := manager.sessions["sess-system"].Session.Status; got != pb.SessionStatus_SESSION_STATUS_RUNNING {
+		t.Fatalf("expected status to stay RUNNING for non-interrupt system message, got %s", got)
+	}
+}

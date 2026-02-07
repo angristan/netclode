@@ -78,6 +78,7 @@ export class CodexAdapter implements SDKAdapter {
   private codex: Codex | null = null;
   private thread: Thread | null = null;
   private interruptSignal = false;
+  private abortController: AbortController | null = null;
   private translatorState: TranslatorState = createTranslatorState();
 
   // Cleaned model name (without :api/:oauth/:effort suffixes)
@@ -243,6 +244,7 @@ export class CodexAdapter implements SDKAdapter {
 
     // Clear interrupt signal
     this.clearInterruptSignal();
+    this.abortController = new AbortController();
 
     // Get or create Codex thread (persisted mapping survives pod restarts)
     const existingThreadId = getSdkSessionId(sessionId);
@@ -281,11 +283,14 @@ export class CodexAdapter implements SDKAdapter {
 
     try {
       // Run the prompt with streaming
-      const { events } = await this.thread.runStreamed(text);
+      const { events } = await this.thread.runStreamed(text, {
+        signal: this.abortController.signal,
+      });
 
       for await (const event of events) {
         if (this.interruptSignal) {
-          yield { type: "system", message: "interrupted" };
+          console.log("[codex-adapter] Interrupted by user");
+          yield { type: "error", message: "Prompt interrupted", retryable: true };
           return;
         }
 
@@ -316,22 +321,35 @@ export class CodexAdapter implements SDKAdapter {
       // Emit final result
       yield createResultEvent(this.translatorState);
     } catch (error) {
+      if (this.interruptSignal || this.isAbortError(error)) {
+        console.log("[codex-adapter] Prompt interrupted");
+        yield { type: "error", message: "Prompt interrupted", retryable: true };
+        return;
+      }
       console.error("[codex-adapter] Error during prompt execution:", error);
       yield {
         type: "error",
         message: `Prompt execution error: ${error instanceof Error ? error.message : String(error)}`,
         retryable: false,
       };
+    } finally {
+      this.abortController = null;
     }
   }
 
   setInterruptSignal(): void {
     this.interruptSignal = true;
-    console.log("[codex-adapter] Interrupt signal set");
+    if (this.abortController) {
+      this.abortController.abort();
+      console.log("[codex-adapter] Interrupt signal set and run aborted");
+    } else {
+      console.log("[codex-adapter] Interrupt signal set");
+    }
   }
 
   clearInterruptSignal(): void {
     this.interruptSignal = false;
+    this.abortController = null;
     resetTranslatorState(this.translatorState);
   }
 
@@ -341,8 +359,25 @@ export class CodexAdapter implements SDKAdapter {
 
   async shutdown(): Promise<void> {
     console.log("[codex-adapter] Shutting down...");
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
     this.thread = null;
     this.codex = null;
     resetTranslatorState(this.translatorState);
+  }
+
+  private isAbortError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    if (error.name === "AbortError") {
+      return true;
+    }
+
+    const message = error.message.toLowerCase();
+    return message.includes("aborted") || message.includes("aborterror");
   }
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"time"
 
 	pb "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
@@ -27,8 +28,7 @@ func (m *Manager) HandleAgentResponse(ctx context.Context, sessionID string, res
 	case *pb.AgentStreamResponse_Event:
 		return m.handleAgentEvent(ctx, sessionID, state, r.Event)
 	case *pb.AgentStreamResponse_SystemMessage:
-		slog.Debug("Agent system message", "sessionID", sessionID, "message", r.SystemMessage.Message)
-		return nil
+		return m.handleAgentSystemMessage(ctx, sessionID, state, r.SystemMessage)
 	case *pb.AgentStreamResponse_Result:
 		return m.handleAgentResult(ctx, sessionID, state, r.Result)
 	case *pb.AgentStreamResponse_Error:
@@ -37,6 +37,34 @@ func (m *Manager) HandleAgentResponse(ctx context.Context, sessionID string, res
 		slog.Warn("Unknown agent response type", "sessionID", sessionID)
 		return nil
 	}
+}
+
+// handleAgentSystemMessage processes system-level messages from agent execution.
+func (m *Manager) handleAgentSystemMessage(ctx context.Context, sessionID string, state *SessionState, systemMessage *pb.AgentSystemMessage) error {
+	if systemMessage == nil {
+		return nil
+	}
+
+	trimmed := strings.TrimSpace(systemMessage.Message)
+	slog.Debug("Agent system message", "sessionID", sessionID, "message", trimmed)
+
+	if !strings.EqualFold(trimmed, "interrupted") {
+		return nil
+	}
+
+	// Treat interrupt as a terminal state for the prompt lifecycle.
+	m.emitAgentDone(ctx, sessionID)
+	m.updateSessionStatus(ctx, sessionID, pb.SessionStatus_SESSION_STATUS_READY)
+	m.updateLastActiveAt(ctx, sessionID)
+
+	// Reset streaming state so a new prompt can start cleanly.
+	m.mu.Lock()
+	state.CurrentMessageID = ""
+	state.ContentBuilder.Reset()
+	state.OriginalPrompt = ""
+	m.mu.Unlock()
+
+	return nil
 }
 
 // handleTextDelta processes text delta from agent streaming.
