@@ -395,65 +395,8 @@ func (m *Manager) createSandboxDirect(ctx context.Context, sessionID string, rep
 		"ANTHROPIC_API_KEY": m.config.AnthropicAPIKey,
 	}
 
-	// If restoring from snapshot, create the PVC first and wait for restore to complete
-	// BEFORE creating the sandbox. This ensures the restore job finishes before the pod mounts.
-	if snapID != "" {
-		slog.Info("Creating PVC from snapshot before sandbox", "sessionID", sessionID, "snapshotID", snapID)
-
-		// Create standalone PVC from snapshot
-		pvcName, err := m.k8s.CreatePVCFromSnapshot(ctx, sessionID, snapID)
-		if err != nil {
-			slog.Error("Failed to create PVC from snapshot", "sessionID", sessionID, "error", err)
-			m.updateSessionStatus(ctx, sessionID, pb.SessionStatus_SESSION_STATUS_ERROR)
-			m.emitSessionError(ctx, sessionID, fmt.Sprintf("failed to create PVC from snapshot: %v", err))
-			return
-		}
-
-		// Wait for JuiceFS restore job to complete BEFORE creating sandbox.
-		// We must wait because the pod will fail with I/O errors if it tries to access
-		// the filesystem before the restore completes.
-		slog.Info("Waiting for snapshot restore job", "sessionID", sessionID, "snapshotID", snapID)
-		if err := m.k8s.WaitForRestoreJob(ctx, sessionID, snapID, 5*time.Minute); err != nil {
-			slog.Error("Snapshot restore job failed", "sessionID", sessionID, "error", err)
-			// Cleanup: delete the PVC we created
-			if delErr := m.k8s.DeletePVC(ctx, sessionID); delErr != nil {
-				slog.Error("Failed to cleanup PVC after restore failure", "sessionID", sessionID, "error", delErr)
-			}
-			m.updateSessionStatus(ctx, sessionID, pb.SessionStatus_SESSION_STATUS_ERROR)
-			m.emitSessionError(ctx, sessionID, fmt.Sprintf("snapshot restore failed: %v", err))
-			return
-		}
-		slog.Info("Snapshot restore completed, creating sandbox with existing PVC", "sessionID", sessionID, "pvc", pvcName)
-
-		// Ensure the session anchor ConfigMap exists and owns the new PVC.
-		// This prevents the PVC from being garbage-collected if the sandbox fails or is paused.
-		if err := m.k8s.EnsureSessionAnchor(ctx, sessionID); err != nil {
-			slog.Warn("Failed to create session anchor", "sessionID", sessionID, "error", err)
-		} else if err := m.k8s.AddSessionAnchorToPVC(ctx, sessionID, pvcName); err != nil {
-			slog.Warn("Failed to add session anchor to PVC", "sessionID", sessionID, "pvc", pvcName, "error", err)
-		}
-
-		// Delete the old orphaned PVC in background (non-blocking)
-		// Only if it's different from the new PVC (avoids deleting the newly created one)
-		go func(sessionID, newPVCName string) {
-			bgCtx := context.Background()
-			if oldPVCName, err := m.storage.GetOldPVCName(bgCtx, sessionID); err == nil && oldPVCName != "" {
-				if oldPVCName == newPVCName {
-					slog.Info("Skipping old PVC deletion (same as new PVC)", "sessionID", sessionID, "pvc", oldPVCName)
-				} else {
-					if err := m.k8s.DeletePVCByName(bgCtx, oldPVCName); err != nil {
-						slog.Warn("Failed to delete old PVC after restore", "sessionID", sessionID, "pvc", oldPVCName, "error", err)
-					} else {
-						slog.Info("Deleted old PVC after restore", "sessionID", sessionID, "pvc", oldPVCName)
-					}
-				}
-				_ = m.storage.ClearOldPVCName(bgCtx, sessionID)
-			}
-		}(sessionID, pvcName)
-
-		// Pass the existing PVC name so sandbox uses it instead of creating a new one
-		env[k8s.ExistingPVCEnvKey] = pvcName
-	} else {
+	// If no explicit restore was requested, validate stored resume PVC.
+	if snapID == "" {
 		// Not restoring from snapshot - check if we have an existing PVC (resume after pause)
 		if existingPVC, err := m.storage.GetPVCName(ctx, sessionID); err == nil && existingPVC != "" {
 			exists, checkErr := m.k8s.PVCExists(ctx, existingPVC)
@@ -466,13 +409,45 @@ func (m *Manager) createSandboxDirect(ctx context.Context, sessionID string, rep
 				slog.Info("Resuming with existing PVC", "sessionID", sessionID, "pvc", existingPVC)
 				env[k8s.ExistingPVCEnvKey] = existingPVC
 			default:
-				// Stale Redis state can point to a PVC that no longer exists. Fall back to a fresh PVC
-				// instead of creating an unschedulable pod that stays stuck in resuming forever.
-				slog.Warn("Stored PVC not found, creating sandbox with a new PVC", "sessionID", sessionID, "pvc", existingPVC)
+				// Stale Redis state can point to a PVC that no longer exists.
+				// Prefer restoring from the latest snapshot before falling back to a fresh PVC.
+				slog.Warn("Stored PVC not found, attempting latest snapshot restore", "sessionID", sessionID, "pvc", existingPVC)
 				if err := m.storage.SetPVCName(ctx, sessionID, ""); err != nil {
 					slog.Warn("Failed to clear stale PVC name from storage", "sessionID", sessionID, "pvc", existingPVC, "error", err)
 				}
+
+				snapshots, snapErr := m.storage.ListSnapshots(ctx, sessionID)
+				if snapErr != nil {
+					slog.Warn("Failed to list snapshots for missing PVC recovery", "sessionID", sessionID, "error", snapErr)
+				} else if len(snapshots) > 0 && snapshots[0] != nil && snapshots[0].Id != "" {
+					snapID = snapshots[0].Id // ListSnapshots returns newest-first.
+					slog.Warn("Resuming from latest snapshot after missing PVC", "sessionID", sessionID, "snapshotID", snapID)
+				} else {
+					slog.Warn("No snapshots available for missing PVC recovery; creating fresh PVC", "sessionID", sessionID)
+				}
 			}
+		}
+	}
+
+	// If restoring from snapshot, create the PVC first and wait for restore to complete
+	// BEFORE creating the sandbox. This ensures the restore job finishes before the pod mounts.
+	if snapID != "" {
+		slog.Info("Creating PVC from snapshot before sandbox", "sessionID", sessionID, "snapshotID", snapID)
+		pvcName, err := m.preparePVCFromSnapshot(ctx, sessionID, snapID)
+		if err != nil {
+			// For explicit user-driven restore, fail hard.
+			// For automatic missing-PVC recovery, continue with fresh PVC.
+			if len(restoreSnapshotID) > 0 {
+				slog.Error("Failed to restore from snapshot", "sessionID", sessionID, "snapshotID", snapID, "error", err)
+				m.updateSessionStatus(ctx, sessionID, pb.SessionStatus_SESSION_STATUS_ERROR)
+				m.emitSessionError(ctx, sessionID, fmt.Sprintf("snapshot restore failed: %v", err))
+				return
+			}
+			slog.Warn("Auto-restore from latest snapshot failed, creating sandbox with fresh PVC", "sessionID", sessionID, "snapshotID", snapID, "error", err)
+		} else {
+			slog.Info("Snapshot restore completed, creating sandbox with existing PVC", "sessionID", sessionID, "pvc", pvcName)
+			// Pass the existing PVC name so sandbox uses it instead of creating a new one.
+			env[k8s.ExistingPVCEnvKey] = pvcName
 		}
 	}
 
@@ -609,6 +584,51 @@ func (m *Manager) createSandboxDirect(ctx context.Context, sessionID string, rep
 	}
 
 	slog.Info("Session sandbox ready", "sessionID", sessionID, "fqdn", fqdn, "status", newStatus)
+}
+
+func (m *Manager) preparePVCFromSnapshot(ctx context.Context, sessionID, snapshotID string) (string, error) {
+	// Create standalone PVC from snapshot.
+	pvcName, err := m.k8s.CreatePVCFromSnapshot(ctx, sessionID, snapshotID)
+	if err != nil {
+		return "", fmt.Errorf("create PVC from snapshot: %w", err)
+	}
+
+	// Wait for JuiceFS restore job to complete BEFORE creating sandbox.
+	if err := m.k8s.WaitForRestoreJob(ctx, sessionID, snapshotID, 5*time.Minute); err != nil {
+		// Cleanup: delete the PVC we created.
+		if delErr := m.k8s.DeletePVC(ctx, sessionID); delErr != nil {
+			slog.Error("Failed to cleanup PVC after restore failure", "sessionID", sessionID, "error", delErr)
+		}
+		return "", fmt.Errorf("wait for restore job: %w", err)
+	}
+
+	// Ensure the session anchor ConfigMap exists and owns the new PVC.
+	// This prevents the PVC from being garbage-collected if the sandbox fails or is paused.
+	if err := m.k8s.EnsureSessionAnchor(ctx, sessionID); err != nil {
+		slog.Warn("Failed to create session anchor", "sessionID", sessionID, "error", err)
+	} else if err := m.k8s.AddSessionAnchorToPVC(ctx, sessionID, pvcName); err != nil {
+		slog.Warn("Failed to add session anchor to PVC", "sessionID", sessionID, "pvc", pvcName, "error", err)
+	}
+
+	// Delete the old orphaned PVC in background (non-blocking)
+	// Only if it's different from the new PVC (avoids deleting the newly created one)
+	go func(sessionID, newPVCName string) {
+		bgCtx := context.Background()
+		if oldPVCName, err := m.storage.GetOldPVCName(bgCtx, sessionID); err == nil && oldPVCName != "" {
+			if oldPVCName == newPVCName {
+				slog.Info("Skipping old PVC deletion (same as new PVC)", "sessionID", sessionID, "pvc", oldPVCName)
+			} else {
+				if err := m.k8s.DeletePVCByName(bgCtx, oldPVCName); err != nil {
+					slog.Warn("Failed to delete old PVC after restore", "sessionID", sessionID, "pvc", oldPVCName, "error", err)
+				} else {
+					slog.Info("Deleted old PVC after restore", "sessionID", sessionID, "pvc", oldPVCName)
+				}
+			}
+			_ = m.storage.ClearOldPVCName(bgCtx, sessionID)
+		}
+	}(sessionID, pvcName)
+
+	return pvcName, nil
 }
 
 // createSandboxViaClaim uses SandboxClaim for warm pool allocation

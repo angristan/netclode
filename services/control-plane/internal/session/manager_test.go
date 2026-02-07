@@ -37,6 +37,7 @@ type mockRuntime struct {
 	readyCallbacks   map[string][]k8s.SandboxReadyCallback
 	createSandboxEnv map[string]map[string]string
 	pvcExists        map[string]bool
+	restoreSnapshot  []string
 	previewHostname  string
 	previewHostErr   error
 }
@@ -49,6 +50,7 @@ func newMockRuntime() *mockRuntime {
 		readyCallbacks:   make(map[string][]k8s.SandboxReadyCallback),
 		createSandboxEnv: make(map[string]map[string]string),
 		pvcExists:        make(map[string]bool),
+		restoreSnapshot:  make([]string, 0),
 	}
 }
 
@@ -255,6 +257,9 @@ func (m *mockRuntime) PVCExists(ctx context.Context, pvcName string) (bool, erro
 }
 
 func (m *mockRuntime) CreatePVCFromSnapshot(ctx context.Context, sessionID, snapshotID string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.restoreSnapshot = append(m.restoreSnapshot, snapshotID)
 	return "agent-home-sess-" + sessionID, nil
 }
 
@@ -307,6 +312,7 @@ type mockStorage struct {
 	oauth       map[string]*storage.CodexOAuthSessionData
 	oauthGlobal *storage.CodexOAuthSessionData
 	pvcNames    map[string]string
+	snapshots   map[string][]*pb.Snapshot
 }
 
 func newMockStorage() *mockStorage {
@@ -315,6 +321,7 @@ func newMockStorage() *mockStorage {
 		streams:  make(map[string][]storage.StreamEntryWithID),
 		oauth:    make(map[string]*storage.CodexOAuthSessionData),
 		pvcNames: make(map[string]string),
+		snapshots: make(map[string][]*pb.Snapshot),
 	}
 }
 
@@ -542,22 +549,50 @@ func (m *mockStorage) Close() error {
 
 // Snapshot methods
 func (m *mockStorage) SaveSnapshot(ctx context.Context, s *pb.Snapshot) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.snapshots[s.SessionId] = append([]*pb.Snapshot{s}, m.snapshots[s.SessionId]...)
 	return nil
 }
 
 func (m *mockStorage) GetSnapshot(ctx context.Context, sessionID, snapshotID string) (*pb.Snapshot, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, s := range m.snapshots[sessionID] {
+		if s != nil && s.Id == snapshotID {
+			return s, nil
+		}
+	}
 	return nil, nil
 }
 
 func (m *mockStorage) ListSnapshots(ctx context.Context, sessionID string) ([]*pb.Snapshot, error) {
-	return nil, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	snaps := m.snapshots[sessionID]
+	out := make([]*pb.Snapshot, len(snaps))
+	copy(out, snaps)
+	return out, nil
 }
 
 func (m *mockStorage) DeleteSnapshot(ctx context.Context, sessionID, snapshotID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	snaps := m.snapshots[sessionID]
+	filtered := make([]*pb.Snapshot, 0, len(snaps))
+	for _, s := range snaps {
+		if s == nil || s.Id != snapshotID {
+			filtered = append(filtered, s)
+		}
+	}
+	m.snapshots[sessionID] = filtered
 	return nil
 }
 
 func (m *mockStorage) DeleteAllSnapshots(ctx context.Context, sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.snapshots, sessionID)
 	return nil
 }
 
@@ -648,7 +683,7 @@ func TestCreateSandboxDirect_UsesStoredPVCWhenItExists(t *testing.T) {
 	}
 }
 
-func TestCreateSandboxDirect_SkipsStoredPVCWhenMissing(t *testing.T) {
+func TestCreateSandboxDirect_SkipsStoredPVCWhenMissingAndNoSnapshots(t *testing.T) {
 	manager, runtime, store := newTestManager(3)
 	sessionID := "sess-missing-pvc"
 	addSession(manager, sessionID, pb.SessionStatus_SESSION_STATUS_PAUSED, time.Now())
@@ -670,6 +705,42 @@ func TestCreateSandboxDirect_SkipsStoredPVCWhenMissing(t *testing.T) {
 
 	if _, ok := env[k8s.ExistingPVCEnvKey]; ok {
 		t.Fatalf("did not expect %s to be set when stored PVC is missing", k8s.ExistingPVCEnvKey)
+	}
+}
+
+func TestCreateSandboxDirect_RestoresLatestSnapshotWhenStoredPVCMissing(t *testing.T) {
+	manager, runtime, store := newTestManager(3)
+	sessionID := "sess-missing-pvc-with-snapshots"
+	addSession(manager, sessionID, pb.SessionStatus_SESSION_STATUS_PAUSED, time.Now())
+
+	storedPVC := "agent-home-sess-does-not-exist"
+	if err := store.SetPVCName(context.Background(), sessionID, storedPVC); err != nil {
+		t.Fatalf("SetPVCName failed: %v", err)
+	}
+
+	store.snapshots[sessionID] = []*pb.Snapshot{
+		{Id: "latest-snapshot", SessionId: sessionID},
+		{Id: "older-snapshot", SessionId: sessionID},
+	}
+
+	runtime.mu.Lock()
+	runtime.pvcExists[storedPVC] = false
+	runtime.mu.Unlock()
+
+	manager.createSandboxDirect(context.Background(), sessionID, nil, nil, false, nil)
+
+	runtime.mu.Lock()
+	env := runtime.createSandboxEnv[sessionID]
+	restoreCalls := append([]string(nil), runtime.restoreSnapshot...)
+	runtime.mu.Unlock()
+
+	expectedPVC := "agent-home-sess-" + sessionID
+	if got := env[k8s.ExistingPVCEnvKey]; got != expectedPVC {
+		t.Fatalf("expected %s=%q, got %q", k8s.ExistingPVCEnvKey, expectedPVC, got)
+	}
+
+	if len(restoreCalls) != 1 || restoreCalls[0] != "latest-snapshot" {
+		t.Fatalf("expected restore call with latest snapshot, got %v", restoreCalls)
 	}
 }
 
