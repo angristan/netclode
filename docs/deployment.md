@@ -253,6 +253,37 @@ make rollout-control-plane
 make rollout-agent
 ```
 
+### Fast dev loop (no GHCR push, no Ansible workload run)
+
+For backend/agent iteration, you can build images directly on the dev host and patch only runtime workloads:
+
+```bash
+# Build on DEPLOY_HOST, import into k3s containerd, patch workloads, verify
+make dev-loop-remote
+```
+
+This path is intended for rapid local iteration only.  
+For canonical deployment, keep using traceable GHCR tags + Ansible (`site.yaml --tags k8s-manifests`).
+
+See [Fast Developer Iteration Loop](dev-iteration.md) for details and variants.
+
+### Fast dev loop (Ansible playbook)
+
+Preferred orchestration for the same fast path:
+
+```bash
+cd /Volumes/Projects/SoftwareReferences/netclode
+make dev-install-builder ANSIBLE_USER=ubuntu   # one-time host setup
+make dev-loop-ansible ANSIBLE_USER=ubuntu
+```
+
+This uses `infra/ansible/playbooks/dev-loop.yaml` with tag-scoped phases:
+- `dev-build`
+- `dev-deploy`
+- `dev-verify`
+
+For when to use full deployment instead of dev deploy, see [Fast Developer Iteration Loop](dev-iteration.md#when-to-run-full-deployment-instead).
+
 ## Rollback
 
 ```bash

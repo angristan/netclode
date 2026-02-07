@@ -53,13 +53,17 @@ WORKDIR /build
 # Install esbuild for bundling
 RUN npm install -g esbuild
 
-# Copy agent source
-COPY services/agent services/agent
+# Copy dependency manifests first for better layer caching
+COPY services/agent/package.json services/agent/package-lock.json services/agent/tsconfig.json /build/services/agent/
 
-# Install agent dependencies
+# Install agent dependencies (only invalidates when manifest changes)
 WORKDIR /build/services/agent
 RUN --mount=type=cache,target=/root/.npm npm install
 RUN npm rebuild node-pty --build-from-source
+
+# Copy source after dependency install to avoid reinstall on every TS edit
+COPY services/agent/src /build/services/agent/src
+COPY services/agent/gen /build/services/agent/gen
 
 # Bundle agent
 RUN esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/agent.js

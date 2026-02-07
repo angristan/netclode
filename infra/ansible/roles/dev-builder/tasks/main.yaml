@@ -1,0 +1,28 @@
+---
+- name: Install docker builder packages
+  ansible.builtin.apt:
+    name: "{{ dev_builder_packages }}"
+    state: present
+    update_cache: yes
+
+- name: Ensure docker service is enabled and running
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Ensure dev builder user is in docker group
+  ansible.builtin.user:
+    name: "{{ dev_builder_user }}"
+    groups: docker
+    append: yes
+
+- name: Verify docker CLI availability
+  ansible.builtin.command:
+    argv: [docker, --version]
+  changed_when: false
+
+- name: Verify docker buildx availability
+  ansible.builtin.command:
+    argv: [docker, buildx, version]
+  changed_when: false

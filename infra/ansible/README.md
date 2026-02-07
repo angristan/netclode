@@ -180,6 +180,24 @@ ansible-playbook playbooks/k8s-only.yaml \
   -e image_pull_secret_username=<github-username> \
   -e image_pull_secret_password=<github-token-with-read-packages>
 
+# Fast dev loop (build on target host + patch workloads + verify)
+# No GHCR push/pull, no full k8s-manifests convergence.
+ansible-playbook playbooks/dev-loop.yaml -e ansible_user=ubuntu
+
+# Install Docker + Buildx on target host for dev builds (one-time setup)
+ansible-playbook playbooks/dev-builder.yaml -e ansible_user=ubuntu
+
+# Fast dev loop phases
+ansible-playbook playbooks/dev-loop.yaml --tags dev-build -e ansible_user=ubuntu
+ansible-playbook playbooks/dev-loop.yaml --tags dev-deploy -e ansible_user=ubuntu \
+  -e control_plane_image=netclode-control-plane:dev-123 \
+  -e agent_image=netclode-agent:dev-123
+ansible-playbook playbooks/dev-loop.yaml --tags dev-verify -e ansible_user=ubuntu
+
+# Optional: override rsync SSH target used by dev-build sync phase
+ansible-playbook playbooks/dev-loop.yaml --tags dev-build -e ansible_user=ubuntu \
+  -e sync_ssh_target=ubuntu@your-server
+
 # Install/update MinIO only
 MINIO_ENABLED=true ansible-playbook playbooks/site.yaml --tags "nftables,minio"
 ```
@@ -246,6 +264,7 @@ kubectl config use-context netclode
 | `tailscale-operator` | Tailscale K8s Operator via Helm |
 | `k8s-manifests` | Deploy all k8s manifests from infra/k8s/ |
 | `secret-proxy` | Generate CA for secret-proxy MITM sidecar |
+| `dev-builder` | Install Docker + Buildx tooling for remote dev builds |
 
 ## GPU Support (Optional)
 

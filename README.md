@@ -120,6 +120,7 @@ Quick version:
 ## Docs
 
 - [Deployment](docs/deployment.md) - Full setup
+- [Fast Dev Iteration](docs/dev-iteration.md) - Remote build + fast rollout loop
 - [Operations](docs/operations.md) - Day-to-day management
 - [Sandbox Architecture](docs/sandbox-architecture.md) - Kata VMs, JuiceFS, warm pool
 - [Session Lifecycle](docs/session-lifecycle.md) - How sessions work
