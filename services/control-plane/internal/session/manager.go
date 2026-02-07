@@ -410,20 +410,37 @@ func (m *Manager) createSandboxDirect(ctx context.Context, sessionID string, rep
 				env[k8s.ExistingPVCEnvKey] = existingPVC
 			default:
 				// Stale Redis state can point to a PVC that no longer exists.
-				// Prefer restoring from the latest snapshot before falling back to a fresh PVC.
+				// First, try the canonical direct-mode PVC name for this session.
+				// This handles sessions where Redis points to an old warm-pool PVC but the
+				// direct-mode PVC still exists with the user's workspace.
 				slog.Warn("Stored PVC not found, attempting latest snapshot restore", "sessionID", sessionID, "pvc", existingPVC)
 				if err := m.storage.SetPVCName(ctx, sessionID, ""); err != nil {
 					slog.Warn("Failed to clear stale PVC name from storage", "sessionID", sessionID, "pvc", existingPVC, "error", err)
 				}
 
-				snapshots, snapErr := m.storage.ListSnapshots(ctx, sessionID)
-				if snapErr != nil {
-					slog.Warn("Failed to list snapshots for missing PVC recovery", "sessionID", sessionID, "error", snapErr)
-				} else if len(snapshots) > 0 && snapshots[0] != nil && snapshots[0].Id != "" {
-					snapID = snapshots[0].Id // ListSnapshots returns newest-first.
-					slog.Warn("Resuming from latest snapshot after missing PVC", "sessionID", sessionID, "snapshotID", snapID)
+				canonicalPVC := fmt.Sprintf("agent-home-sess-%s", sessionID)
+				canonicalExists, canonicalErr := m.k8s.PVCExists(ctx, canonicalPVC)
+				if canonicalErr != nil {
+					slog.Warn("Failed to validate canonical session PVC", "sessionID", sessionID, "pvc", canonicalPVC, "error", canonicalErr)
+				}
+
+				if canonicalExists {
+					slog.Warn("Stored PVC missing, resuming with canonical session PVC", "sessionID", sessionID, "pvc", canonicalPVC)
+					env[k8s.ExistingPVCEnvKey] = canonicalPVC
+					if err := m.storage.SetPVCName(ctx, sessionID, canonicalPVC); err != nil {
+						slog.Warn("Failed to persist canonical PVC name", "sessionID", sessionID, "pvc", canonicalPVC, "error", err)
+					}
 				} else {
-					slog.Warn("No snapshots available for missing PVC recovery; creating fresh PVC", "sessionID", sessionID)
+					// Canonical PVC is also missing, restore from latest snapshot.
+					snapshots, snapErr := m.storage.ListSnapshots(ctx, sessionID)
+					if snapErr != nil {
+						slog.Warn("Failed to list snapshots for missing PVC recovery", "sessionID", sessionID, "error", snapErr)
+					} else if len(snapshots) > 0 && snapshots[0] != nil && snapshots[0].Id != "" {
+						snapID = snapshots[0].Id // ListSnapshots returns newest-first.
+						slog.Warn("Resuming from latest snapshot after missing PVC", "sessionID", sessionID, "snapshotID", snapID)
+					} else {
+						slog.Warn("No snapshots available for missing PVC recovery; creating fresh PVC", "sessionID", sessionID)
+					}
 				}
 			}
 		}

@@ -317,10 +317,10 @@ type mockStorage struct {
 
 func newMockStorage() *mockStorage {
 	return &mockStorage{
-		sessions: make(map[string]*pb.Session),
-		streams:  make(map[string][]storage.StreamEntryWithID),
-		oauth:    make(map[string]*storage.CodexOAuthSessionData),
-		pvcNames: make(map[string]string),
+		sessions:  make(map[string]*pb.Session),
+		streams:   make(map[string][]storage.StreamEntryWithID),
+		oauth:     make(map[string]*storage.CodexOAuthSessionData),
+		pvcNames:  make(map[string]string),
 		snapshots: make(map[string][]*pb.Snapshot),
 	}
 }
@@ -695,6 +695,7 @@ func TestCreateSandboxDirect_SkipsStoredPVCWhenMissingAndNoSnapshots(t *testing.
 
 	runtime.mu.Lock()
 	runtime.pvcExists[storedPVC] = false
+	runtime.pvcExists["agent-home-sess-"+sessionID] = false
 	runtime.mu.Unlock()
 
 	manager.createSandboxDirect(context.Background(), sessionID, nil, nil, false, nil)
@@ -705,6 +706,38 @@ func TestCreateSandboxDirect_SkipsStoredPVCWhenMissingAndNoSnapshots(t *testing.
 
 	if _, ok := env[k8s.ExistingPVCEnvKey]; ok {
 		t.Fatalf("did not expect %s to be set when stored PVC is missing", k8s.ExistingPVCEnvKey)
+	}
+}
+
+func TestCreateSandboxDirect_UsesCanonicalPVCWhenStoredPVCMissing(t *testing.T) {
+	manager, runtime, store := newTestManager(3)
+	sessionID := "sess-missing-pvc-canonical-exists"
+	addSession(manager, sessionID, pb.SessionStatus_SESSION_STATUS_PAUSED, time.Now())
+
+	storedPVC := "agent-home-netclode-agent-pool-missing"
+	if err := store.SetPVCName(context.Background(), sessionID, storedPVC); err != nil {
+		t.Fatalf("SetPVCName failed: %v", err)
+	}
+
+	canonicalPVC := "agent-home-sess-" + sessionID
+	runtime.mu.Lock()
+	runtime.pvcExists[storedPVC] = false
+	runtime.pvcExists[canonicalPVC] = true
+	runtime.mu.Unlock()
+
+	manager.createSandboxDirect(context.Background(), sessionID, nil, nil, false, nil)
+
+	runtime.mu.Lock()
+	env := runtime.createSandboxEnv[sessionID]
+	restoreCalls := append([]string(nil), runtime.restoreSnapshot...)
+	runtime.mu.Unlock()
+
+	if got := env[k8s.ExistingPVCEnvKey]; got != canonicalPVC {
+		t.Fatalf("expected %s=%q, got %q", k8s.ExistingPVCEnvKey, canonicalPVC, got)
+	}
+
+	if len(restoreCalls) != 0 {
+		t.Fatalf("expected no snapshot restore calls when canonical PVC exists, got %v", restoreCalls)
 	}
 }
 
@@ -725,6 +758,7 @@ func TestCreateSandboxDirect_RestoresLatestSnapshotWhenStoredPVCMissing(t *testi
 
 	runtime.mu.Lock()
 	runtime.pvcExists[storedPVC] = false
+	runtime.pvcExists["agent-home-sess-"+sessionID] = false
 	runtime.mu.Unlock()
 
 	manager.createSandboxDirect(context.Background(), sessionID, nil, nil, false, nil)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/angristan/netclode/services/control-plane/internal/config"
 	authenticationv1 "k8s.io/api/authentication/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -1977,9 +1978,10 @@ func strPtr(s string) *string {
 	return &s
 }
 
-// WaitForRestoreJob waits for the JuiceFS restore job to complete.
-// JuiceFS CSI creates a restore job when a PVC is created from a snapshot.
-// The job name follows the pattern: juicefs-restore-snapshot-{volumesnapshotcontent-uid}
+// WaitForRestoreJob waits for the JuiceFS restore job to complete if one is created.
+// Some JuiceFS deployments restore snapshot data without a Job object, so this method
+// performs bounded discovery and returns success when no async restore job appears.
+// Expected job name pattern: juicefs-restore-snapshot-{volumesnapshotcontent-uid}.
 func (r *k8sRuntime) WaitForRestoreJob(ctx context.Context, sessionID, snapshotID string, timeout time.Duration) error {
 	snapName := snapshotName(sessionID, snapshotID)
 
@@ -2014,23 +2016,83 @@ func (r *k8sRuntime) WaitForRestoreJob(ctx context.Context, sessionID, snapshotI
 	// JuiceFS restore job name follows pattern: juicefs-restore-snapshot-{uid}
 	jobName := fmt.Sprintf("juicefs-restore-snapshot-%s", uid)
 
+	const (
+		pollInterval     = 500 * time.Millisecond
+		discoveryTimeout = 10 * time.Second
+	)
+
 	slog.Info("Waiting for JuiceFS restore job", "sessionID", sessionID, "snapshotID", snapshotID, "jobName", jobName)
 
 	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		job, err := r.clientset.BatchV1().Jobs("kube-system").Get(ctx, jobName, metav1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				// Job might not exist yet, wait and retry
-				time.Sleep(500 * time.Millisecond)
-				continue
-			}
-			return fmt.Errorf("get restore job %s: %w", jobName, err)
+	discoveryDeadline := time.Now().Add(discoveryTimeout)
+	jobSeen := false
+	lastNamespace := ""
+
+	sleepOrCancel := func() error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(pollInterval):
+			return nil
 		}
+	}
+
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		var (
+			job   *batchv1.Job
+			ns    string
+			found bool
+		)
+
+		// Historically this job lived in kube-system; also check current control-plane namespace.
+		// This avoids hard-coding a single namespace across cluster setups.
+		candidateNamespaces := []string{"kube-system"}
+		if r.namespace != "kube-system" {
+			candidateNamespaces = append(candidateNamespaces, r.namespace)
+		}
+
+		for _, candidateNS := range candidateNamespaces {
+			j, err := r.clientset.BatchV1().Jobs(candidateNS).Get(ctx, jobName, metav1.GetOptions{})
+			if err != nil {
+				if errors.IsNotFound(err) {
+					continue
+				}
+				return fmt.Errorf("get restore job %s in namespace %s: %w", jobName, candidateNS, err)
+			}
+			job = j
+			ns = candidateNS
+			found = true
+			break
+		}
+
+		if !found {
+			if jobSeen {
+				// Job existed earlier and is now gone; with job TTL cleanup this usually means completion.
+				slog.Info("Restore job disappeared after being observed; assuming completion", "sessionID", sessionID, "jobName", jobName, "namespace", lastNamespace)
+				return nil
+			}
+			if time.Now().After(discoveryDeadline) {
+				slog.Info("No JuiceFS restore job detected; continuing without async restore wait", "sessionID", sessionID, "snapshotID", snapshotID, "jobName", jobName)
+				return nil
+			}
+			if err := sleepOrCancel(); err != nil {
+				return err
+			}
+			continue
+		}
+
+		jobSeen = true
+		lastNamespace = ns
 
 		// Check job status
 		if job.Status.Succeeded > 0 {
-			slog.Info("JuiceFS restore job completed successfully", "sessionID", sessionID, "jobName", jobName)
+			slog.Info("JuiceFS restore job completed successfully", "sessionID", sessionID, "jobName", jobName, "namespace", ns)
 			return nil
 		}
 
@@ -2038,10 +2100,16 @@ func (r *k8sRuntime) WaitForRestoreJob(ctx context.Context, sessionID, snapshotI
 			return fmt.Errorf("restore job %s failed after %d attempts", jobName, job.Status.Failed)
 		}
 
-		slog.Debug("Restore job still running", "sessionID", sessionID, "jobName", jobName, "active", job.Status.Active, "succeeded", job.Status.Succeeded, "failed", job.Status.Failed)
-		time.Sleep(500 * time.Millisecond)
+		slog.Debug("Restore job still running", "sessionID", sessionID, "jobName", jobName, "namespace", ns, "active", job.Status.Active, "succeeded", job.Status.Succeeded, "failed", job.Status.Failed)
+		if err := sleepOrCancel(); err != nil {
+			return err
+		}
 	}
 
+	if !jobSeen {
+		slog.Warn("Timed out waiting for restore job discovery; continuing", "sessionID", sessionID, "snapshotID", snapshotID, "jobName", jobName)
+		return nil
+	}
 	return fmt.Errorf("timeout waiting for restore job %s", jobName)
 }
 
