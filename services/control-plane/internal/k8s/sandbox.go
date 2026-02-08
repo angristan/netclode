@@ -1142,11 +1142,11 @@ func (r *k8sRuntime) ConfigureTailnetAccess(ctx context.Context, sessionID strin
 // DeleteNetworkRestriction removes any network restriction and tailnet access policies for a session.
 // This is called during sandbox cleanup.
 func (r *k8sRuntime) DeleteNetworkRestriction(ctx context.Context, sessionID string) error {
-	// Delete network restriction policy
-	restrictPolicyName := fmt.Sprintf("sess-%s-network-restrict", sessionID)
-	err := r.clientset.NetworkingV1().NetworkPolicies(r.namespace).Delete(ctx, restrictPolicyName, metav1.DeleteOptions{})
+	// Delete internet access policy (created by ConfigureNetwork)
+	internetPolicyName := fmt.Sprintf("sess-%s-internet-access", sessionID)
+	err := r.clientset.NetworkingV1().NetworkPolicies(r.namespace).Delete(ctx, internetPolicyName, metav1.DeleteOptions{})
 	if err != nil && !errors.IsNotFound(err) {
-		return fmt.Errorf("delete network restriction policy: %w", err)
+		return fmt.Errorf("delete internet access policy: %w", err)
 	}
 
 	// Delete tailnet access policy
