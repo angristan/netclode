@@ -289,21 +289,30 @@ struct InlineModelPicker: View {
 
             // Expanded state - shows all options grouped by provider
             if isExpanded {
-                ScrollView {
-                    LazyVStack(spacing: Theme.Spacing.sm) {
-                        ForEach(providerSections) { section in
-                            VStack(alignment: .leading, spacing: 2) {
-                                // Section header
-                                sectionHeader(for: section)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: Theme.Spacing.sm) {
+                            ForEach(providerSections) { section in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    // Section header
+                                    sectionHeader(for: section)
 
-                                // Models in this section
-                                ForEach(section.models) { model in
-                                    modelRow(for: model)
+                                    // Models in this section
+                                    ForEach(section.models) { model in
+                                        modelRow(for: model)
+                                            .id(model.id)
+                                    }
                                 }
                             }
                         }
+                        .padding(.vertical, Theme.Spacing.xs)
                     }
-                    .padding(.vertical, Theme.Spacing.xs)
+                    .onAppear {
+                        scrollToSelectedModel(using: proxy, animated: false)
+                    }
+                    .onChange(of: selectedModelId) { _, _ in
+                        scrollToSelectedModel(using: proxy, animated: true)
+                    }
                 }
                 .frame(maxHeight: 320)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.Radius.md))
@@ -377,6 +386,20 @@ struct InlineModelPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private func scrollToSelectedModel(using proxy: ScrollViewProxy, animated: Bool) {
+        guard models.contains(where: { $0.id == selectedModelId }) else { return }
+        let action = {
+            proxy.scrollTo(selectedModelId, anchor: .center)
+        }
+        if animated {
+            withAnimation(.smooth(duration: 0.2)) {
+                action()
+            }
+        } else {
+            action()
+        }
     }
 
     /// Find the best matching model when exact ID match isn't found
