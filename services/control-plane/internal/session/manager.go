@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const (
@@ -1176,7 +1177,10 @@ func (m *Manager) ExposePort(ctx context.Context, sessionID string, port int) (s
 // UnexposePort removes a port exposure for a session via Tailscale and persists the event.
 func (m *Manager) UnexposePort(ctx context.Context, sessionID string, port int) error {
 	if err := m.k8s.UnexposePort(ctx, sessionID, port); err != nil {
-		return err
+		if !k8serrors.IsNotFound(err) {
+			return err
+		}
+		slog.Info("Unexpose target not found, persisting event anyway", "sessionID", sessionID, "port", port, "error", err)
 	}
 
 	port32 := int32(port)

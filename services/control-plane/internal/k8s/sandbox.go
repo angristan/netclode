@@ -1017,29 +1017,33 @@ func (r *k8sRuntime) ExposePort(ctx context.Context, sessionID string, port int)
 func (r *k8sRuntime) UnexposePort(ctx context.Context, sessionID string, port int) error {
 	tailscaleSvcName := fmt.Sprintf("ts-%s", sessionID)
 	networkPolicyName := fmt.Sprintf("sess-%s-network-policy", sessionID)
+	removedServicePort := false
 
 	// 1. Remove port from the Tailscale service
 	svc, err := r.clientset.CoreV1().Services(r.namespace).Get(ctx, tailscaleSvcName, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("get tailscale service: %w", err)
-	}
-
-	removedServicePort := false
-	servicePorts := make([]corev1.ServicePort, 0, len(svc.Spec.Ports))
-	for _, p := range svc.Spec.Ports {
-		if p.Port == int32(port) {
-			removedServicePort = true
-			continue
+		if errors.IsNotFound(err) {
+			slog.Info("Tailscale service not found during unexpose, skipping service update", "sessionID", sessionID, "name", tailscaleSvcName, "port", port)
+		} else {
+			return fmt.Errorf("get tailscale service: %w", err)
 		}
-		servicePorts = append(servicePorts, p)
-	}
-
-	if removedServicePort {
-		svc.Spec.Ports = servicePorts
-		if _, err := r.clientset.CoreV1().Services(r.namespace).Update(ctx, svc, metav1.UpdateOptions{}); err != nil {
-			return fmt.Errorf("update service: %w", err)
+	} else {
+		servicePorts := make([]corev1.ServicePort, 0, len(svc.Spec.Ports))
+		for _, p := range svc.Spec.Ports {
+			if p.Port == int32(port) {
+				removedServicePort = true
+				continue
+			}
+			servicePorts = append(servicePorts, p)
 		}
-		slog.Info("Removed port from Tailscale service", "sessionID", sessionID, "port", port)
+
+		if removedServicePort {
+			svc.Spec.Ports = servicePorts
+			if _, err := r.clientset.CoreV1().Services(r.namespace).Update(ctx, svc, metav1.UpdateOptions{}); err != nil {
+				return fmt.Errorf("update service: %w", err)
+			}
+			slog.Info("Removed port from Tailscale service", "sessionID", sessionID, "port", port)
+		}
 	}
 
 	// 2. Remove port from the NetworkPolicy

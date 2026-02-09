@@ -19,6 +19,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // mockRuntime implements k8s.Runtime for testing
@@ -40,6 +42,7 @@ type mockRuntime struct {
 	restoreSnapshot  []string
 	previewHostname  string
 	previewHostErr   error
+	unexposePortErr  error
 }
 
 func newMockRuntime() *mockRuntime {
@@ -166,6 +169,9 @@ func (m *mockRuntime) ExposePort(ctx context.Context, sessionID string, port int
 func (m *mockRuntime) UnexposePort(ctx context.Context, sessionID string, port int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.unexposePortErr != nil {
+		return m.unexposePortErr
+	}
 	if ports, exists := m.exposedPorts[sessionID]; exists {
 		delete(ports, port)
 	}
@@ -1438,6 +1444,38 @@ func TestUnexposePort_RemovesPortAndPersistsEvent(t *testing.T) {
 	runtime.mu.Unlock()
 	if stillExposed {
 		t.Fatalf("expected port 1234 to be removed from runtime state")
+	}
+
+	entries, err := manager.storage.GetStreamEntriesByTypes(context.Background(), "test123", "0", 0, []string{storage.StreamEntryTypeEvent})
+	if err != nil {
+		t.Fatalf("GetStreamEntriesByTypes failed: %v", err)
+	}
+
+	foundUnexposed := false
+	for _, e := range entries {
+		var event pb.AgentEvent
+		if err := protojson.Unmarshal(e.Entry.Payload, &event); err != nil {
+			continue
+		}
+		if event.Kind == pb.AgentEventKind_AGENT_EVENT_KIND_PORT_UNEXPOSED {
+			if payload := event.GetPortUnexposed(); payload != nil && payload.Port == 1234 {
+				foundUnexposed = true
+				break
+			}
+		}
+	}
+
+	if !foundUnexposed {
+		t.Fatalf("expected persisted port_unexposed event for port 1234")
+	}
+}
+
+func TestUnexposePort_NotFoundStillPersistsEvent(t *testing.T) {
+	manager, runtime, _ := newTestManager(3)
+	runtime.unexposePortErr = k8serrors.NewNotFound(schema.GroupResource{Resource: "services"}, "ts-test123")
+
+	if err := manager.UnexposePort(context.Background(), "test123", 1234); err != nil {
+		t.Fatalf("UnexposePort failed: %v", err)
 	}
 
 	entries, err := manager.storage.GetStreamEntriesByTypes(context.Background(), "test123", "0", 0, []string{storage.StreamEntryTypeEvent})
