@@ -3,7 +3,11 @@ FROM golang:1.25-alpine AS builder
 WORKDIR /app
 
 COPY go.mod go.sum ./
-COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+
+COPY cmd ./cmd
+COPY internal ./internal
+COPY gen ./gen
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \

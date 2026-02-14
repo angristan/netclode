@@ -181,6 +181,13 @@ struct PersistedEvent: Codable, Sendable {
                     previewUrl: previewUrl
                 ))
 
+        case "port_unexposed":
+                return .portUnexposed(PortUnexposedEvent(
+                    id: id,
+                    timestamp: timestamp,
+                    port: port ?? 0
+                ))
+
             case "repo_clone":
                 let cloneStage: RepoCloneStage
                 switch stage {

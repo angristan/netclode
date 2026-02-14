@@ -41,6 +41,11 @@ message ClientMessage {
     UpdateRepoAccessRequest update_repo_access = 21;
     // Resource limits
     GetResourceLimitsRequest get_resource_limits = 22;
+    // Backend-managed Codex OAuth flow
+    CodexAuthStartRequest codex_auth_start = 23;
+    CodexAuthStatusRequest codex_auth_status = 24;
+    CodexAuthLogoutRequest codex_auth_logout = 25;
+    UnexposePortRequest unexpose_port = 26;
   }
 }
 
@@ -72,6 +77,11 @@ message ServerMessage {
     RepoAccessUpdatedResponse repo_access_updated = 23;
     // Resource limits
     ResourceLimitsResponse resource_limits = 24;
+    // Backend-managed Codex OAuth flow
+    CodexAuthStartedResponse codex_auth_started = 25;
+    CodexAuthStatusResponse codex_auth_status = 26;
+    CodexAuthLoggedOutResponse codex_auth_logged_out = 27;
+    PortUnexposedResponse port_unexposed = 28;
   }
 }
 
@@ -87,6 +97,14 @@ message NetworkConfig {
   bool tailnet_access = 1;
 }
 
+// CodexOAuthTokens contains ChatGPT OAuth tokens for Codex sessions.
+message CodexOAuthTokens {
+  string access_token = 1;
+  string id_token = 2;
+  string refresh_token = 3;
+  optional google.protobuf.Timestamp expires_at = 4;
+}
+
 message CreateSessionRequest {
   optional string request_id = 1;            // Client-generated ID for request correlation
   optional string name = 2;                  // Initial session name
@@ -98,6 +116,7 @@ message CreateSessionRequest {
   optional CopilotBackend copilot_backend = 8;  // Backend for Copilot SDK (GitHub or Anthropic)
   optional NetworkConfig network_config = 9;   // Network configuration (defaults to enabled)
   optional SandboxResources resources = 10;    // Custom VM resources (bypasses warm pool if set)
+  optional CodexOAuthTokens codex_oauth_tokens = 11; // Session-scoped OAuth tokens for Codex :oauth models
 }
 
 message ListSessionsRequest {
@@ -160,6 +179,12 @@ message ExposePortRequest {
   int32 port = 3;
 }
 
+message UnexposePortRequest {
+  optional string request_id = 1;
+  string session_id = 2;
+  int32 port = 3;
+}
+
 message SyncRequest {
   optional string request_id = 1;
 }
@@ -183,6 +208,7 @@ message ListModelsRequest {
   optional string request_id = 1;
   SdkType sdk_type = 2;                      // Which SDK to list models for
   optional CopilotBackend copilot_backend = 3;  // For Copilot: which backend's models to list
+  optional bool codex_oauth_available = 4;   // Hint from client to include Codex :oauth model variants
 }
 
 message GetCopilotStatusRequest {
@@ -207,6 +233,18 @@ message UpdateRepoAccessRequest {
 }
 
 message GetResourceLimitsRequest {
+  optional string request_id = 1;
+}
+
+message CodexAuthStartRequest {
+  optional string request_id = 1;
+}
+
+message CodexAuthStatusRequest {
+  optional string request_id = 1;
+}
+
+message CodexAuthLogoutRequest {
   optional string request_id = 1;
 }
 
@@ -267,6 +305,12 @@ message PortExposedResponse {
   optional string request_id = 4;
 }
 
+message PortUnexposedResponse {
+  string session_id = 1;
+  int32 port = 2;
+  optional string request_id = 3;
+}
+
 message GitHubReposResponse {
   repeated GitHubRepo repos = 1;
   optional string request_id = 2;
@@ -301,6 +345,35 @@ message CopilotStatusResponse {
   CopilotAuthStatus auth = 1;                // GitHub Copilot authentication status
   optional CopilotPremiumQuota quota = 2;    // Premium request quota (only if authenticated)
   optional string request_id = 3;
+}
+
+enum CodexAuthState {
+  CODEX_AUTH_STATE_UNSPECIFIED = 0;
+  CODEX_AUTH_STATE_UNAUTHENTICATED = 1;
+  CODEX_AUTH_STATE_PENDING = 2;
+  CODEX_AUTH_STATE_READY = 3;
+  CODEX_AUTH_STATE_ERROR = 4;
+}
+
+message CodexAuthStartedResponse {
+  string verification_uri = 1;
+  optional string verification_uri_complete = 2;
+  string user_code = 3;
+  int32 interval_seconds = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  optional string request_id = 6;
+}
+
+message CodexAuthStatusResponse {
+  CodexAuthState state = 1;
+  optional string account_id = 2;
+  optional google.protobuf.Timestamp expires_at = 3;
+  optional string error = 4;
+  optional string request_id = 5;
+}
+
+message CodexAuthLoggedOutResponse {
+  optional string request_id = 1;
 }
 
 // ============================================================================

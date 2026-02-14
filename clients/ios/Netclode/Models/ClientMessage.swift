@@ -27,6 +27,7 @@ enum ClientMessage: Encodable, Sendable {
     case terminalInput(sessionId: String, data: String)
     case terminalResize(sessionId: String, cols: Int, rows: Int)
     case portExpose(sessionId: String, port: Int)
+    case portUnexpose(sessionId: String, port: Int)
     // Sync messages
     case sync
     case sessionOpen(id: String, lastMessageId: String?, lastNotificationId: String?)
@@ -106,6 +107,11 @@ enum ClientMessage: Encodable, Sendable {
 
         case .portExpose(let sessionId, let port):
             try container.encode("port.expose", forKey: .type)
+            try container.encode(sessionId, forKey: .sessionId)
+            try container.encode(port, forKey: .port)
+
+        case .portUnexpose(let sessionId, let port):
+            try container.encode("port.unexpose", forKey: .type)
             try container.encode(sessionId, forKey: .sessionId)
             try container.encode(port, forKey: .port)
 

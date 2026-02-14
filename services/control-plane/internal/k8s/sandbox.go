@@ -11,6 +11,7 @@ import (
 
 	"github.com/angristan/netclode/services/control-plane/internal/config"
 	authenticationv1 "k8s.io/api/authentication/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -55,6 +56,8 @@ type k8sRuntime struct {
 	claimCallbacks map[string]ClaimBoundCallback
 	claimCache     map[string]*SandboxClaim
 }
+
+const controlPlaneIngressName = "control-plane"
 
 func newK8sRuntime(cfg *config.Config) (*k8sRuntime, error) {
 	restConfig, err := rest.InClusterConfig()
@@ -511,13 +514,14 @@ func (r *k8sRuntime) buildContainerResources(resources *SandboxResourceConfig) *
 // WaitForReady registers a callback to be called when sandbox becomes ready.
 // Uses informer-based watching instead of polling.
 func (r *k8sRuntime) WaitForReady(ctx context.Context, sessionID string, timeout time.Duration) (string, error) {
-	// Check if already ready from cache
-	r.cacheMu.RLock()
-	sandbox, exists := r.sandboxCache[sessionID]
-	r.cacheMu.RUnlock()
-
-	if exists && sandbox.IsReady() {
-		return r.getServiceFQDN(sandbox), nil
+	// Check the latest sandbox object from the API first.
+	// Relying only on informer cache can return stale readiness after rapid delete/recreate cycles.
+	if status, err := r.GetStatus(ctx, sessionID); err == nil {
+		if status.Exists && status.Ready {
+			return status.ServiceFQDN, nil
+		}
+	} else {
+		slog.Warn("Failed to get fresh sandbox status, falling back to informer wait", "sessionID", sessionID, "error", err)
 	}
 
 	// Setup callback channel
@@ -580,27 +584,50 @@ func (r *k8sRuntime) WatchSandboxReady(sessionID string, callback SandboxReadyCa
 	r.callbacksMu.Unlock()
 }
 
-// GetStatus retrieves the status of a sandbox from cache.
+// GetStatus retrieves the status of a sandbox from the API server.
 func (r *k8sRuntime) GetStatus(ctx context.Context, sessionID string) (*SandboxStatusInfo, error) {
-	r.cacheMu.RLock()
-	sandbox, exists := r.sandboxCache[sessionID]
-	r.cacheMu.RUnlock()
-
-	if !exists {
-		// Try fetching directly
-		name := sandboxName(sessionID)
-		u, err := r.dynamicClient.Resource(SandboxGVR).Namespace(r.namespace).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return &SandboxStatusInfo{Exists: false}, nil
-			}
-			return nil, err
+	list, err := r.dynamicClient.Resource(SandboxGVR).Namespace(r.namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("netclode.io/session=%s", sessionID),
+	})
+	if err != nil {
+		// Fallback to cache only if the API request itself fails.
+		r.cacheMu.RLock()
+		sandbox, exists := r.sandboxCache[sessionID]
+		r.cacheMu.RUnlock()
+		if exists {
+			return &SandboxStatusInfo{
+				Exists:      true,
+				Ready:       sandbox.IsReady(),
+				ServiceFQDN: r.getServiceFQDN(sandbox),
+				Error:       sandbox.GetError(),
+			}, nil
 		}
-		sandbox = r.unstructuredToSandbox(u)
-		if sandbox == nil {
-			return &SandboxStatusInfo{Exists: false}, nil
+		return nil, err
+	}
+
+	if len(list.Items) == 0 {
+		// API confirms no sandbox with this session label exists.
+		return &SandboxStatusInfo{Exists: false}, nil
+	}
+
+	// If multiple objects exist transiently, use the newest one.
+	latest := &list.Items[0]
+	for i := 1; i < len(list.Items); i++ {
+		item := &list.Items[i]
+		if item.GetCreationTimestamp().After(latest.GetCreationTimestamp().Time) {
+			latest = item
 		}
 	}
+
+	sandbox := r.unstructuredToSandbox(latest)
+	if sandbox == nil {
+		return &SandboxStatusInfo{Exists: false}, nil
+	}
+
+	// Refresh cache with the latest object.
+	r.cacheMu.Lock()
+	r.sandboxCache[sessionID] = sandbox
+	r.cacheMu.Unlock()
 
 	return &SandboxStatusInfo{
 		Exists:      true,
@@ -654,6 +681,18 @@ func (r *k8sRuntime) DeletePVC(ctx context.Context, sessionID string) error {
 
 	slog.Info("PVC deleted", "sessionID", sessionID, "name", name)
 	return nil
+}
+
+// PVCExists checks whether a PVC with the given name exists.
+func (r *k8sRuntime) PVCExists(ctx context.Context, name string) (bool, error) {
+	_, err := r.clientset.CoreV1().PersistentVolumeClaims(r.namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // DeletePVCByName deletes a PVC by its exact name.
@@ -971,6 +1010,152 @@ func (r *k8sRuntime) ExposePort(ctx context.Context, sessionID string, port int)
 	}
 
 	return nil
+}
+
+// UnexposePort removes a previously exposed port from the Tailscale service and NetworkPolicy.
+// This is called when a user removes a preview port.
+func (r *k8sRuntime) UnexposePort(ctx context.Context, sessionID string, port int) error {
+	tailscaleSvcName := fmt.Sprintf("ts-%s", sessionID)
+	networkPolicyName := fmt.Sprintf("sess-%s-network-policy", sessionID)
+	removedServicePort := false
+
+	// 1. Remove port from the Tailscale service
+	svc, err := r.clientset.CoreV1().Services(r.namespace).Get(ctx, tailscaleSvcName, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			slog.Info("Tailscale service not found during unexpose, skipping service update", "sessionID", sessionID, "name", tailscaleSvcName, "port", port)
+		} else {
+			return fmt.Errorf("get tailscale service: %w", err)
+		}
+	} else {
+		servicePorts := make([]corev1.ServicePort, 0, len(svc.Spec.Ports))
+		for _, p := range svc.Spec.Ports {
+			if p.Port == int32(port) {
+				removedServicePort = true
+				continue
+			}
+			servicePorts = append(servicePorts, p)
+		}
+
+		if removedServicePort {
+			svc.Spec.Ports = servicePorts
+			if _, err := r.clientset.CoreV1().Services(r.namespace).Update(ctx, svc, metav1.UpdateOptions{}); err != nil {
+				return fmt.Errorf("update service: %w", err)
+			}
+			slog.Info("Removed port from Tailscale service", "sessionID", sessionID, "port", port)
+		}
+	}
+
+	// 2. Remove port from the NetworkPolicy
+	np, err := r.clientset.NetworkingV1().NetworkPolicies(r.namespace).Get(ctx, networkPolicyName, metav1.GetOptions{})
+	if err != nil {
+		// NetworkPolicy might not exist (e.g., if sandbox was created without one)
+		if errors.IsNotFound(err) {
+			slog.Warn("NetworkPolicy not found, skipping", "sessionID", sessionID, "name", networkPolicyName)
+			return nil
+		}
+		return fmt.Errorf("get network policy: %w", err)
+	}
+
+	removedPolicyPort := false
+	updatedIngress := make([]networkingv1.NetworkPolicyIngressRule, 0, len(np.Spec.Ingress))
+	for _, rule := range np.Spec.Ingress {
+		isTailscaleRule := false
+		for _, from := range rule.From {
+			if from.NamespaceSelector != nil &&
+				from.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"] == "tailscale" {
+				isTailscaleRule = true
+				break
+			}
+		}
+
+		if !isTailscaleRule {
+			updatedIngress = append(updatedIngress, rule)
+			continue
+		}
+
+		filteredPorts := make([]networkingv1.NetworkPolicyPort, 0, len(rule.Ports))
+		removedFromThisRule := false
+		for _, p := range rule.Ports {
+			if p.Port != nil && p.Port.IntValue() == port {
+				removedFromThisRule = true
+				continue
+			}
+			filteredPorts = append(filteredPorts, p)
+		}
+
+		if !removedFromThisRule {
+			updatedIngress = append(updatedIngress, rule)
+			continue
+		}
+
+		removedPolicyPort = true
+		if len(filteredPorts) == 0 {
+			// Rule only allowed this port; remove the whole rule.
+			continue
+		}
+
+		rule.Ports = filteredPorts
+		updatedIngress = append(updatedIngress, rule)
+	}
+
+	if removedPolicyPort {
+		np.Spec.Ingress = updatedIngress
+		if _, err := r.clientset.NetworkingV1().NetworkPolicies(r.namespace).Update(ctx, np, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("update network policy: %w", err)
+		}
+		slog.Info("Removed port from NetworkPolicy", "sessionID", sessionID, "port", port)
+	}
+
+	if !removedServicePort && !removedPolicyPort {
+		slog.Info("Port was not exposed; no unexpose changes applied", "sessionID", sessionID, "port", port)
+	}
+
+	return nil
+}
+
+// GetSandboxPreviewHostname returns the best available hostname for sandbox previews.
+// It prefers the explicit Tailscale service hostname, and if that hostname is short
+// (for example `sandbox-abc123`), it appends the tailnet DNS suffix inferred from
+// the control-plane ingress hostname.
+func (r *k8sRuntime) GetSandboxPreviewHostname(ctx context.Context, sessionID string) (string, error) {
+	fallbackHost := fmt.Sprintf("sandbox-%s", sessionID)
+	tailscaleSvcName := fmt.Sprintf("ts-%s", sessionID)
+
+	svc, err := r.clientset.CoreV1().Services(r.namespace).Get(ctx, tailscaleSvcName, metav1.GetOptions{})
+	if err != nil {
+		return fallbackHost, fmt.Errorf("get tailscale service: %w", err)
+	}
+
+	host := strings.TrimSpace(svc.Annotations["tailscale.com/hostname"])
+	if host == "" {
+		host = fallbackHost
+	}
+
+	// If already fully-qualified, use as-is.
+	if strings.Contains(host, ".") {
+		return host, nil
+	}
+
+	ingress, err := r.clientset.NetworkingV1().Ingresses(r.namespace).Get(ctx, controlPlaneIngressName, metav1.GetOptions{})
+	if err != nil {
+		return host, fmt.Errorf("get control-plane ingress: %w", err)
+	}
+	if len(ingress.Status.LoadBalancer.Ingress) == 0 {
+		return host, fmt.Errorf("control-plane ingress has no load balancer hostname")
+	}
+
+	ingressHost := strings.TrimSpace(ingress.Status.LoadBalancer.Ingress[0].Hostname)
+	if ingressHost == "" {
+		return host, fmt.Errorf("control-plane ingress load balancer hostname is empty")
+	}
+
+	_, tailnetSuffix, ok := strings.Cut(ingressHost, ".")
+	if !ok || tailnetSuffix == "" {
+		return host, fmt.Errorf("cannot infer tailnet suffix from ingress hostname %q", ingressHost)
+	}
+
+	return fmt.Sprintf("%s.%s", host, tailnetSuffix), nil
 }
 
 // ConfigureNetwork enables or disables internet access for a sandbox.
@@ -1797,9 +1982,10 @@ func strPtr(s string) *string {
 	return &s
 }
 
-// WaitForRestoreJob waits for the JuiceFS restore job to complete.
-// JuiceFS CSI creates a restore job when a PVC is created from a snapshot.
-// The job name follows the pattern: juicefs-restore-snapshot-{volumesnapshotcontent-uid}
+// WaitForRestoreJob waits for the JuiceFS restore job to complete if one is created.
+// Some JuiceFS deployments restore snapshot data without a Job object, so this method
+// performs bounded discovery and returns success when no async restore job appears.
+// Expected job name pattern: juicefs-restore-snapshot-{volumesnapshotcontent-uid}.
 func (r *k8sRuntime) WaitForRestoreJob(ctx context.Context, sessionID, snapshotID string, timeout time.Duration) error {
 	snapName := snapshotName(sessionID, snapshotID)
 
@@ -1834,23 +2020,83 @@ func (r *k8sRuntime) WaitForRestoreJob(ctx context.Context, sessionID, snapshotI
 	// JuiceFS restore job name follows pattern: juicefs-restore-snapshot-{uid}
 	jobName := fmt.Sprintf("juicefs-restore-snapshot-%s", uid)
 
+	const (
+		pollInterval     = 500 * time.Millisecond
+		discoveryTimeout = 10 * time.Second
+	)
+
 	slog.Info("Waiting for JuiceFS restore job", "sessionID", sessionID, "snapshotID", snapshotID, "jobName", jobName)
 
 	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		job, err := r.clientset.BatchV1().Jobs("kube-system").Get(ctx, jobName, metav1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				// Job might not exist yet, wait and retry
-				time.Sleep(500 * time.Millisecond)
-				continue
-			}
-			return fmt.Errorf("get restore job %s: %w", jobName, err)
+	discoveryDeadline := time.Now().Add(discoveryTimeout)
+	jobSeen := false
+	lastNamespace := ""
+
+	sleepOrCancel := func() error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(pollInterval):
+			return nil
 		}
+	}
+
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		var (
+			job   *batchv1.Job
+			ns    string
+			found bool
+		)
+
+		// Historically this job lived in kube-system; also check current control-plane namespace.
+		// This avoids hard-coding a single namespace across cluster setups.
+		candidateNamespaces := []string{"kube-system"}
+		if r.namespace != "kube-system" {
+			candidateNamespaces = append(candidateNamespaces, r.namespace)
+		}
+
+		for _, candidateNS := range candidateNamespaces {
+			j, err := r.clientset.BatchV1().Jobs(candidateNS).Get(ctx, jobName, metav1.GetOptions{})
+			if err != nil {
+				if errors.IsNotFound(err) {
+					continue
+				}
+				return fmt.Errorf("get restore job %s in namespace %s: %w", jobName, candidateNS, err)
+			}
+			job = j
+			ns = candidateNS
+			found = true
+			break
+		}
+
+		if !found {
+			if jobSeen {
+				// Job existed earlier and is now gone; with job TTL cleanup this usually means completion.
+				slog.Info("Restore job disappeared after being observed; assuming completion", "sessionID", sessionID, "jobName", jobName, "namespace", lastNamespace)
+				return nil
+			}
+			if time.Now().After(discoveryDeadline) {
+				slog.Info("No JuiceFS restore job detected; continuing without async restore wait", "sessionID", sessionID, "snapshotID", snapshotID, "jobName", jobName)
+				return nil
+			}
+			if err := sleepOrCancel(); err != nil {
+				return err
+			}
+			continue
+		}
+
+		jobSeen = true
+		lastNamespace = ns
 
 		// Check job status
 		if job.Status.Succeeded > 0 {
-			slog.Info("JuiceFS restore job completed successfully", "sessionID", sessionID, "jobName", jobName)
+			slog.Info("JuiceFS restore job completed successfully", "sessionID", sessionID, "jobName", jobName, "namespace", ns)
 			return nil
 		}
 
@@ -1858,10 +2104,16 @@ func (r *k8sRuntime) WaitForRestoreJob(ctx context.Context, sessionID, snapshotI
 			return fmt.Errorf("restore job %s failed after %d attempts", jobName, job.Status.Failed)
 		}
 
-		slog.Debug("Restore job still running", "sessionID", sessionID, "jobName", jobName, "active", job.Status.Active, "succeeded", job.Status.Succeeded, "failed", job.Status.Failed)
-		time.Sleep(500 * time.Millisecond)
+		slog.Debug("Restore job still running", "sessionID", sessionID, "jobName", jobName, "namespace", ns, "active", job.Status.Active, "succeeded", job.Status.Succeeded, "failed", job.Status.Failed)
+		if err := sleepOrCancel(); err != nil {
+			return err
+		}
 	}
 
+	if !jobSeen {
+		slog.Warn("Timed out waiting for restore job discovery; continuing", "sessionID", sessionID, "snapshotID", snapshotID, "jobName", jobName)
+		return nil
+	}
 	return fmt.Errorf("timeout waiting for restore job %s", jobName)
 }
 

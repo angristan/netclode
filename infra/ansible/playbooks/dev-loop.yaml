@@ -1,0 +1,419 @@
+---
+# Fast developer loop (backend + agent only)
+#
+# Purpose:
+# - Build control-plane/agent images on the target host
+# - Import them into k3s containerd (no GHCR push/pull)
+# - Patch only runtime workloads for fast iteration
+# - Verify rollout and image wiring
+#
+# Usage:
+#   # Full loop
+#   DEPLOY_HOST=<host-or-ssh-alias> ansible-playbook playbooks/dev-loop.yaml -e ansible_user=ubuntu
+#
+#   # Build only
+#   DEPLOY_HOST=<host-or-ssh-alias> ansible-playbook playbooks/dev-loop.yaml --tags dev-build -e ansible_user=ubuntu
+#
+#   # Deploy only (use previously built/imported images)
+#   DEPLOY_HOST=<host-or-ssh-alias> ansible-playbook playbooks/dev-loop.yaml --tags dev-deploy -e ansible_user=ubuntu \
+#     -e control_plane_image=netclode-control-plane:dev-123 \
+#     -e agent_image=netclode-agent:dev-123
+#
+#   # Verify only
+#   DEPLOY_HOST=<host-or-ssh-alias> ansible-playbook playbooks/dev-loop.yaml --tags dev-verify -e ansible_user=ubuntu
+#
+#   # Optional: override rsync SSH target explicitly (default: ansible_host/inventory host)
+#   DEPLOY_HOST=<host-or-ssh-alias> ansible-playbook playbooks/dev-loop.yaml \
+#     -e sync_ssh_target=ubuntu@<host-or-ssh-alias>
+
+- name: Fast dev loop for backend and agent
+  hosts: all
+  become: yes
+  gather_facts: no
+
+  vars:
+    dev_namespace: "{{ k8s_namespace | default('netclode') }}"
+    dev_control_plane_deployment: "{{ control_plane_deployment_name | default('control-plane') }}"
+    dev_sandbox_template: "{{ sandbox_template_name | default('netclode-agent') }}"
+    dev_warm_pool_name: "{{ warm_pool_name_override | default('netclode-agent-pool') }}"
+
+    dev_remote_dir: "{{ remote_dir | default('/tmp/netclode-dev-worktree') }}"
+
+    build_control_plane_enabled: "{{ build_control_plane | default(true) | bool }}"
+    build_agent_enabled: "{{ build_agent | default(true) | bool }}"
+    import_to_k3s_enabled: "{{ import_to_k3s | default(true) | bool }}"
+    refresh_warm_pool_enabled: "{{ refresh_warm_pool | default(true) | bool }}"
+
+  pre_tasks:
+    - name: Resolve dev tag
+      ansible.builtin.set_fact:
+        dev_tag: "{{ tag | default('dev-' ~ lookup('pipe', 'date +%Y%m%d-%H%M%S')) }}"
+      tags: [always]
+
+    - name: Resolve image names
+      ansible.builtin.set_fact:
+        resolved_control_plane_image: "{{ control_plane_image | default('netclode-control-plane:' ~ dev_tag) }}"
+        resolved_agent_image: "{{ agent_image | default('netclode-agent:' ~ dev_tag) }}"
+      tags: [always]
+
+    - name: Resolve SSH target for rsync sync tasks
+      ansible.builtin.set_fact:
+        dev_sync_ssh_target: "{{ sync_ssh_target | default(hostvars[inventory_hostname].ansible_host | default(inventory_hostname)) }}"
+      tags: [always]
+
+    - name: Show resolved dev loop configuration
+      ansible.builtin.debug:
+        msg:
+          - "dev_tag={{ dev_tag }}"
+          - "control_plane_image={{ resolved_control_plane_image }}"
+          - "agent_image={{ resolved_agent_image }}"
+          - "sync_target={{ dev_sync_ssh_target }}"
+          - "remote_dir={{ dev_remote_dir }}"
+      tags: [always]
+
+  tasks:
+    - name: Prepare remote workspace directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ dev_remote_dir }}"
+        - "{{ dev_remote_dir }}/services"
+        - "{{ dev_remote_dir }}/services/control-plane"
+        - "{{ dev_remote_dir }}/services/agent"
+      tags: [dev-build]
+
+    - name: Ensure remote workspace is writable by SSH user
+      ansible.builtin.file:
+        path: "{{ dev_remote_dir }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        recurse: yes
+      when: ansible_user is defined and ansible_user | length > 0
+      tags: [dev-build]
+
+    - name: Sync control-plane sources (Docker-required only)
+      ansible.builtin.command:
+        argv:
+          - rsync
+          - -az
+          - --delete
+          - --exclude=.DS_Store
+          - "{{ playbook_dir }}/../../../services/control-plane/"
+          - "{{ dev_sync_ssh_target }}:{{ dev_remote_dir }}/services/control-plane/"
+      delegate_to: localhost
+      become: no
+      when: build_control_plane_enabled
+      tags: [dev-build]
+
+    - name: Sync agent sources (Docker-required only)
+      ansible.builtin.command:
+        argv:
+          - rsync
+          - -az
+          - --delete
+          - --exclude=.DS_Store
+          - --exclude=node_modules
+          - --exclude=dist
+          - "{{ playbook_dir }}/../../../services/agent/"
+          - "{{ dev_sync_ssh_target }}:{{ dev_remote_dir }}/services/agent/"
+      delegate_to: localhost
+      become: no
+      when: build_agent_enabled
+      tags: [dev-build]
+
+    - name: Check docker availability on remote host (dev-build preflight)
+      ansible.builtin.command:
+        argv: [bash, -lc, "command -v docker"]
+      register: docker_check
+      changed_when: false
+      failed_when: false
+      when: build_control_plane_enabled or build_agent_enabled
+      tags: [dev-build]
+
+    - name: Fail when docker is missing on remote host
+      ansible.builtin.fail:
+        msg: >-
+          docker is required on {{ inventory_hostname }} for dev-build, but was not found in PATH.
+          Install Docker with buildx support on the host, or skip dev-build and run only dev-deploy/dev-verify.
+      when:
+        - (build_control_plane_enabled or build_agent_enabled)
+        - docker_check.rc != 0
+      tags: [dev-build]
+
+    - name: Build control-plane image on remote host
+      ansible.builtin.command:
+        argv:
+          - docker
+          - buildx
+          - build
+          - --platform
+          - linux/amd64
+          - -f
+          - services/control-plane/Dockerfile
+          - -t
+          - "{{ resolved_control_plane_image }}"
+          - --load
+          - services/control-plane
+      args:
+        chdir: "{{ dev_remote_dir }}"
+      when: build_control_plane_enabled
+      tags: [dev-build]
+
+    - name: Import control-plane image into k3s containerd
+      ansible.builtin.shell: |
+        set -euo pipefail
+        docker save {{ resolved_control_plane_image | quote }} | k3s ctr images import -
+      args:
+        executable: /bin/bash
+      when:
+        - build_control_plane_enabled
+        - import_to_k3s_enabled
+      tags: [dev-build]
+
+    - name: Build agent image on remote host
+      ansible.builtin.command:
+        argv:
+          - docker
+          - buildx
+          - build
+          - --platform
+          - linux/amd64
+          - -f
+          - services/agent/Dockerfile
+          - -t
+          - "{{ resolved_agent_image }}"
+          - --load
+          - .
+      args:
+        chdir: "{{ dev_remote_dir }}"
+      when: build_agent_enabled
+      tags: [dev-build]
+
+    - name: Import agent image into k3s containerd
+      ansible.builtin.shell: |
+        set -euo pipefail
+        docker save {{ resolved_agent_image | quote }} | k3s ctr images import -
+      args:
+        executable: /bin/bash
+      when:
+        - build_agent_enabled
+        - import_to_k3s_enabled
+      tags: [dev-build]
+
+    - name: Update control-plane deployment image
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - set
+          - image
+          - "deployment/{{ dev_control_plane_deployment }}"
+          - "control-plane={{ resolved_control_plane_image }}"
+      tags: [dev-deploy]
+
+    - name: Update control-plane AGENT_IMAGE env
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - set
+          - env
+          - "deployment/{{ dev_control_plane_deployment }}"
+          - "AGENT_IMAGE={{ resolved_agent_image }}"
+      tags: [dev-deploy]
+
+    - name: Set control-plane imagePullPolicy to IfNotPresent
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - patch
+          - "deployment/{{ dev_control_plane_deployment }}"
+          - --type=json
+          - -p
+          - >-
+            [{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"IfNotPresent"}]
+      tags: [dev-deploy]
+
+    - name: Patch sandbox template image and pull policy
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - patch
+          - "sandboxtemplate/{{ dev_sandbox_template }}"
+          - --type=json
+          - -p
+          - >-
+            [{"op":"replace","path":"/spec/podTemplate/spec/containers/0/image","value":"{{ resolved_agent_image }}"},
+            {"op":"replace","path":"/spec/podTemplate/spec/containers/0/imagePullPolicy","value":"IfNotPresent"}]
+      tags: [dev-deploy]
+
+    - name: Wait for control-plane rollout
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - rollout
+          - status
+          - "deployment/{{ dev_control_plane_deployment }}"
+          - --timeout=180s
+      tags: [dev-deploy, dev-verify]
+
+    - name: Read current warm pool replicas
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - get
+          - "sandboxwarmpool/{{ dev_warm_pool_name }}"
+          - -o
+          - jsonpath={.spec.replicas}
+      register: warm_pool_replicas_raw
+      changed_when: false
+      when: refresh_warm_pool_enabled
+      tags: [dev-deploy]
+
+    - name: Resolve warm pool replicas fallback
+      ansible.builtin.set_fact:
+        warm_pool_replicas: "{{ warm_pool_replicas_raw.stdout | trim | default('1', true) }}"
+      when: refresh_warm_pool_enabled
+      tags: [dev-deploy]
+
+    - name: Scale warm pool down to force refreshed warm pods
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - patch
+          - "sandboxwarmpool/{{ dev_warm_pool_name }}"
+          - --type=merge
+          - -p
+          - '{"spec":{"replicas":0}}'
+      when: refresh_warm_pool_enabled
+      tags: [dev-deploy]
+
+    - name: Wait briefly for warm pod drain
+      ansible.builtin.pause:
+        seconds: 3
+      when: refresh_warm_pool_enabled
+      tags: [dev-deploy]
+
+    - name: Scale warm pool back to previous replica count
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - patch
+          - "sandboxwarmpool/{{ dev_warm_pool_name }}"
+          - --type=merge
+          - -p
+          - "{\"spec\":{\"replicas\":{{ warm_pool_replicas | int }}}}"
+      when: refresh_warm_pool_enabled
+      tags: [dev-deploy]
+
+    - name: Read deployed control-plane image
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - get
+          - "deployment/{{ dev_control_plane_deployment }}"
+          - -o
+          - jsonpath={.spec.template.spec.containers[0].image}
+      register: verify_control_plane_image
+      changed_when: false
+      tags: [dev-verify]
+
+    - name: Read deployed control-plane AGENT_IMAGE env
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - get
+          - "deployment/{{ dev_control_plane_deployment }}"
+          - -o
+          - jsonpath={.spec.template.spec.containers[0].env[?(@.name=="AGENT_IMAGE")].value}
+      register: verify_agent_image_env
+      changed_when: false
+      tags: [dev-verify]
+
+    - name: Read sandbox template image
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - get
+          - "sandboxtemplate/{{ dev_sandbox_template }}"
+          - -o
+          - jsonpath={.spec.podTemplate.spec.containers[0].image}
+      register: verify_sandbox_template_image
+      changed_when: false
+      tags: [dev-verify]
+
+    - name: Read sandbox template imagePullPolicy
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - get
+          - "sandboxtemplate/{{ dev_sandbox_template }}"
+          - -o
+          - jsonpath={.spec.podTemplate.spec.containers[0].imagePullPolicy}
+      register: verify_sandbox_pull_policy
+      changed_when: false
+      tags: [dev-verify]
+
+    - name: Show verification summary
+      ansible.builtin.debug:
+        msg:
+          - "control-plane image: {{ verify_control_plane_image.stdout }}"
+          - "control-plane AGENT_IMAGE: {{ verify_agent_image_env.stdout }}"
+          - "sandbox template image: {{ verify_sandbox_template_image.stdout }}"
+          - "sandbox template imagePullPolicy: {{ verify_sandbox_pull_policy.stdout }}"
+      tags: [dev-verify]
+
+    - name: Show recent control-plane logs
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - -n
+          - "{{ dev_namespace }}"
+          - logs
+          - "deployment/{{ dev_control_plane_deployment }}"
+          - --tail=60
+      register: control_plane_logs
+      changed_when: false
+      tags: [dev-verify]
+
+    - name: Print recent control-plane logs
+      ansible.builtin.debug:
+        msg: "{{ control_plane_logs.stdout_lines }}"
+      tags: [dev-verify]

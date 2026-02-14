@@ -218,7 +218,8 @@ Validation flow:
 | `SDK_TYPE_COPILOT` | `api.github.com` | `github_copilot` |
 | | `copilot-proxy.githubusercontent.com` | `github_copilot` |
 | | `api.anthropic.com` | `anthropic` |
-| `SDK_TYPE_CODEX` | `api.openai.com` | `codex_access` |
+
+Codex requests are passed through without placeholder replacement. The agent receives backend-managed API/OAuth credentials directly for Codex.
 
 ## Security Analysis
 

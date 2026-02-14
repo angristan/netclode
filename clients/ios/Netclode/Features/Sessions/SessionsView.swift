@@ -85,6 +85,11 @@ struct SessionsView: View {
                 selectedSession = session
             }
         }
+        .onChange(of: sessionStore.pendingCreationError) { _, newError in
+            if newError != nil, settingsStore.hapticFeedbackEnabled {
+                HapticFeedback.error()
+            }
+        }
         .onAppear {
             if connectService.connectionState.isConnected {
                 connectService.send(.sessionList)
@@ -123,6 +128,18 @@ struct SessionsView: View {
         } message: {
             if let session = sessionToDelete {
                 Text("This will permanently delete \"\(session.name)\" and all its data.")
+            }
+        }
+        .alert("Session Creation Failed", isPresented: .init(
+            get: { sessionStore.pendingCreationError != nil },
+            set: { if !$0 { sessionStore.clearPendingCreationError() } }
+        )) {
+            Button("OK") {
+                sessionStore.clearPendingCreationError()
+            }
+        } message: {
+            if let error = sessionStore.pendingCreationError {
+                Text(error)
             }
         }
     }

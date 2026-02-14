@@ -23,6 +23,7 @@ enum AgentEventKind {
   AGENT_EVENT_KIND_REPO_CLONE = 8;            // Repository clone progress
   AGENT_EVENT_KIND_AGENT_DISCONNECTED = 9;    // Agent disconnected unexpectedly
   AGENT_EVENT_KIND_AGENT_RECONNECTED = 10;    // Agent reconnected after disconnect
+  AGENT_EVENT_KIND_PORT_UNEXPOSED = 11;       // Port exposure was removed
 }
 
 // AgentEvent represents events emitted during agent execution.
@@ -40,6 +41,7 @@ message AgentEvent {
     ToolEndPayload tool_end = 8;
     PortExposedPayload port_exposed = 9;
     RepoClonePayload repo_clone = 10;
+    PortUnexposedPayload port_unexposed = 11;
   }
 }
 
@@ -97,6 +99,11 @@ message PortExposedPayload {
   int32 port = 1;                             // The port number exposed
   optional string process = 2;                // Process name listening on the port
   optional string preview_url = 3;            // URL to access the exposed port
+}
+
+// PortUnexposedPayload contains data for port removal events.
+message PortUnexposedPayload {
+  int32 port = 1;                             // The port number no longer exposed
 }
 
 // RepoCloneStage represents the stage of repository cloning.

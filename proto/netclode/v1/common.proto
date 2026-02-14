@@ -97,7 +97,6 @@ message SessionConfig {
   optional string codex_access_token = 11;
   optional string codex_id_token = 12;
   optional string openai_api_key = 13;
-  optional string codex_refresh_token = 14;
   optional string reasoning_effort = 15;
   optional string mistral_api_key = 16;
   optional string ollama_url = 17;     // URL for local Ollama inference (e.g., "http://ollama.netclode.svc.cluster.local:11434")

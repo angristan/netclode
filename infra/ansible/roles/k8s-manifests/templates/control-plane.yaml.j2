@@ -17,9 +17,13 @@ spec:
         app: control-plane
     spec:
       serviceAccountName: control-plane
+{% if image_pull_secret_name | length > 0 %}
+      imagePullSecrets:
+        - name: {{ image_pull_secret_name }}
+{% endif %}
       containers:
         - name: control-plane
-          image: ghcr.io/angristan/netclode-control-plane:latest
+          image: {{ control_plane_image }}
           ports:
             - containerPort: 3000
               name: http
@@ -30,11 +34,14 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: AGENT_IMAGE
+              value: "{{ agent_image }}"
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: netclode-secrets
                   key: anthropic-api-key
+                  optional: true
             # GitHub Copilot token for Copilot SDK (optional)
             - name: GITHUB_COPILOT_TOKEN
               valueFrom:
@@ -67,23 +74,11 @@ spec:
                   name: netclode-secrets
                   key: openai-api-key
                   optional: true
-            - name: CODEX_ACCESS_TOKEN
+            - name: CODEX_OAUTH_ENCRYPTION_KEY_B64
               valueFrom:
                 secretKeyRef:
                   name: netclode-secrets
-                  key: codex-access-token
-                  optional: true
-            - name: CODEX_ID_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: netclode-secrets
-                  key: codex-id-token
-                  optional: true
-            - name: CODEX_REFRESH_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: netclode-secrets
-                  key: codex-refresh-token
+                  key: codex-oauth-encryption-key-b64
                   optional: true
             - name: MISTRAL_API_KEY
               valueFrom:

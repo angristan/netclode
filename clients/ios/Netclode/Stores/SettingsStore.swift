@@ -4,6 +4,8 @@ import SwiftUI
 @MainActor
 @Observable
 final class SettingsStore {
+    private let lastModelKeyPrefix = "netclode_last_model_"
+
     var serverURL: String {
         didSet {
             UserDefaults.standard.set(serverURL, forKey: "netclode_server_url")
@@ -47,5 +49,19 @@ final class SettingsStore {
         }
 
         hapticFeedbackEnabled = UserDefaults.standard.object(forKey: "netclode_haptic_feedback") as? Bool ?? true
+    }
+
+    /// Returns the last model selected by the user for the given SDK type.
+    func lastUsedModelId(for sdkType: SdkType) -> String? {
+        UserDefaults.standard.string(forKey: lastModelKey(for: sdkType))
+    }
+
+    /// Persists the last model selected by the user for the given SDK type.
+    func setLastUsedModelId(_ modelId: String, for sdkType: SdkType) {
+        UserDefaults.standard.set(modelId, forKey: lastModelKey(for: sdkType))
+    }
+
+    private func lastModelKey(for sdkType: SdkType) -> String {
+        "\(lastModelKeyPrefix)\(sdkType.rawValue)"
     }
 }

@@ -63,6 +63,7 @@ final class MessageRouter {
         case .sessionCreated(let session):
             print("[MessageRouter] session.created received: id=\(session.id), pendingPromptText=\(sessionStore.pendingPromptText ?? "nil")")
             sessionStore.addSession(session)
+            sessionStore.clearPendingCreationError()
 
             // If there's a pending prompt, set up navigation and mark as processing
             // Note: The prompt itself is sent via initialPrompt in session.create,
@@ -126,6 +127,8 @@ final class MessageRouter {
             print("Session error \(id ?? "unknown"): \(error)")
             if let id {
                 sessionStore.setError(for: id, error: error)
+            } else if sessionStore.pendingPromptText != nil {
+                sessionStore.failPendingCreation(with: error)
             }
 
         // Agent messages
@@ -265,12 +268,18 @@ final class MessageRouter {
         case .portExposed(let sessionId, let port, let previewUrl):
             print("[MessageRouter] Port \(port) exposed for session \(sessionId): \(previewUrl)")
 
+        case .portUnexposed(let sessionId, let port):
+            print("[MessageRouter] Port \(port) unexposed for session \(sessionId)")
+
         case .portError(let sessionId, let port, let error):
             print("[MessageRouter] Failed to expose port \(port) for session \(sessionId): \(error)")
 
         // General errors
         case .error(let message):
             print("Server error: \(message)")
+            if sessionStore.pendingPromptText != nil {
+                sessionStore.failPendingCreation(with: message)
+            }
             // Notify GitHubStore in case it's waiting for a response
             if githubStore.isLoading {
                 githubStore.handleError(message)

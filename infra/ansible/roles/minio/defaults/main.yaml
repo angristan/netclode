@@ -1,0 +1,15 @@
+---
+# MinIO defaults
+minio_user: minio
+minio_group: minio
+minio_data_dir: /var/lib/minio/data
+minio_config_dir: /etc/minio
+minio_bind_address: "0.0.0.0"
+minio_console_bind_address: "0.0.0.0"
+minio_scheme: http
+minio_binary_url: https://dl.min.io/server/minio/release/linux-amd64/minio
+minio_client_url: https://dl.min.io/client/mc/release/linux-amd64/mc
+# If set explicitly, these override values read from .env.
+minio_root_user: ""
+minio_root_password: ""
+

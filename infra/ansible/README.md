@@ -52,24 +52,37 @@ export DEPLOY_HOST=your-server-ip
 
 ### Secrets
 
-All secrets are read from the `.env` file at the repo root. Required entries:
+All secrets are read from the `.env` file at the repo root.
+
+Required entries:
 
 ```bash
 # .env file
 
-# LLM provider (at least one required)
-ANTHROPIC_API_KEY=sk-ant-api03-xxx
+# LLM credentials (choose one path)
+# Path A: API key(s)
+# ANTHROPIC_API_KEY=sk-ant-api03-xxx
 # OPENAI_API_KEY=sk-xxx
 # MISTRAL_API_KEY=xxx
+#
+# Optional: required only for Codex OAuth session storage encryption
+# CODEX_OAUTH_ENCRYPTION_KEY_B64=$(openssl rand -base64 32)
 
 # Tailscale (OAuth client for k8s ingress)
 TS_OAUTH_CLIENT_ID=your-oauth-client-id
 TS_OAUTH_CLIENT_SECRET=your-oauth-client-secret
 
-# JuiceFS / S3 storage
+# Option A: external S3-compatible storage (manual)
 DO_SPACES_ACCESS_KEY=your-spaces-access-key
 DO_SPACES_SECRET_KEY=your-spaces-secret-key
 JUICEFS_BUCKET=https://fra1.digitaloceanspaces.com/your-bucket
+
+# Option B: self-host MinIO (automatic)
+# MINIO_ENABLED=true
+# MINIO_BUCKET_NAME=netclode-juicefs
+# MINIO_API_PORT=9000
+
+# JuiceFS metadata (optional - default shown)
 JUICEFS_META_URL=redis://redis-juicefs.netclode.svc.cluster.local:6379/0
 
 # GitHub App (optional - for repo picker)
@@ -97,6 +110,28 @@ This creates:
 **Kubernetes secrets** (in `netclode` namespace):
 - `netclode-secrets` - LLM API keys and optional GitHub App credentials
 - `juicefs-secret` - S3 credentials and JuiceFS metadata URL
+
+### MinIO (Optional)
+
+To run MinIO on the host as self-hosted S3 storage:
+
+```bash
+MINIO_ENABLED=true ansible-playbook playbooks/site.yaml --tags "nftables,minio"
+```
+
+Credential resolution order:
+- `minio_root_user` / `minio_root_password` Ansible vars (if provided)
+- `.env` fallback: `DO_SPACES_ACCESS_KEY` / `DO_SPACES_SECRET_KEY`
+- If neither is set, random credentials are generated and persisted to `/var/secrets/minio-root-user` and `/var/secrets/minio-root-password`
+
+When `MINIO_ENABLED=true`, `deploy-secrets` can auto-wire JuiceFS storage:
+- Reads credentials from `/var/secrets/minio-root-*` if `DO_SPACES_*` are omitted
+- Derives `JUICEFS_BUCKET` from host IP + MinIO port/bucket if `JUICEFS_BUCKET` is omitted
+
+Optional environment overrides:
+- `MINIO_BUCKET_NAME` (default: `netclode-juicefs`)
+- `MINIO_API_PORT` (default: `9000`)
+- `MINIO_CONSOLE_PORT` (default: `9001`)
 
 ## Usage
 
@@ -130,6 +165,41 @@ ansible-playbook playbooks/site.yaml --skip-tags k8s-manifests
 
 # Deploy only k8s manifests (fast updates)
 ansible-playbook playbooks/k8s-only.yaml
+
+# Deploy only k8s manifests with custom images
+ansible-playbook playbooks/k8s-only.yaml \
+  -e control_plane_image=ghcr.io/<owner>/netclode-control-plane:<tag> \
+  -e agent_image=ghcr.io/<owner>/netclode-agent:<tag>
+
+# Deploy private custom images (adds/uses imagePullSecret)
+ansible-playbook playbooks/k8s-only.yaml \
+  -e control_plane_image=ghcr.io/<owner>/netclode-control-plane:<tag> \
+  -e agent_image=ghcr.io/<owner>/netclode-agent:<tag> \
+  -e image_pull_secret_name=ghcr-pull-secret \
+  -e image_pull_secret_registry=ghcr.io \
+  -e image_pull_secret_username=<github-username> \
+  -e image_pull_secret_password=<github-token-with-read-packages>
+
+# Fast dev loop (build on target host + patch workloads + verify)
+# No GHCR push/pull, no full k8s-manifests convergence.
+ansible-playbook playbooks/dev-loop.yaml -e ansible_user=ubuntu
+
+# Install Docker + Buildx on target host for dev builds (one-time setup)
+ansible-playbook playbooks/dev-builder.yaml -e ansible_user=ubuntu
+
+# Fast dev loop phases
+ansible-playbook playbooks/dev-loop.yaml --tags dev-build -e ansible_user=ubuntu
+ansible-playbook playbooks/dev-loop.yaml --tags dev-deploy -e ansible_user=ubuntu \
+  -e control_plane_image=netclode-control-plane:dev-123 \
+  -e agent_image=netclode-agent:dev-123
+ansible-playbook playbooks/dev-loop.yaml --tags dev-verify -e ansible_user=ubuntu
+
+# Optional: override rsync SSH target used by dev-build sync phase
+ansible-playbook playbooks/dev-loop.yaml --tags dev-build -e ansible_user=ubuntu \
+  -e sync_ssh_target=ubuntu@your-server
+
+# Install/update MinIO only
+MINIO_ENABLED=true ansible-playbook playbooks/site.yaml --tags "nftables,minio"
 ```
 
 ### Local kubectl Access
@@ -160,6 +230,8 @@ kubectl config use-context netclode
 | `common` | Base packages, SSH, directories |
 | `nftables` | Firewall configuration |
 | `secrets` | Deploy secrets (host + k8s) |
+| `minio` | MinIO self-hosted S3 storage |
+| `storage` | Storage stack helpers (currently MinIO) |
 | `tailscale` | Tailscale daemon |
 | `kata` | Kata Containers runtime (use with `secrets` tag to read .env) |
 | `k3s` | k3s Kubernetes server |
@@ -182,6 +254,7 @@ kubectl config use-context netclode
 | `common` | Base system setup (packages, SSH, kernel modules) |
 | `nftables` | Firewall with persistence |
 | `deploy-secrets` | Deploy secrets from .env to host and k8s |
+| `minio` | Install MinIO service and bootstrap JuiceFS bucket |
 | `tailscale` | Tailscale daemon + auto-connect |
 | `kata` | Kata Containers static release |
 | `nvidia` | NVIDIA driver, container toolkit, device plugin (optional) |
@@ -191,6 +264,7 @@ kubectl config use-context netclode
 | `tailscale-operator` | Tailscale K8s Operator via Helm |
 | `k8s-manifests` | Deploy all k8s manifests from infra/k8s/ |
 | `secret-proxy` | Generate CA for secret-proxy MITM sidecar |
+| `dev-builder` | Install Docker + Buildx tooling for remote dev builds |
 
 ## GPU Support (Optional)
 
@@ -384,7 +458,6 @@ SDK → auth-proxy (localhost:8080) → secret-proxy (external) → internet
 | `OPENCODE_API_KEY` | `api.opencode.ai`, `openrouter.ai`, `api.openrouter.ai` |
 | `ZAI_API_KEY` | `open.bigmodel.cn` |
 | `GITHUB_COPILOT_TOKEN` | `api.github.com`, `copilot-proxy.githubusercontent.com` |
-| `CODEX_ACCESS_TOKEN` | `api.openai.com` |
 
 **Not proxied:** `GITHUB_TOKEN` (used by git credential helper, not HTTP headers)
 

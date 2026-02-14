@@ -17,7 +17,7 @@
  *    - Allows using ChatGPT subscription for Codex
  */
 
-import { Codex, type Thread, type ThreadEvent, type ModelReasoningEffort } from "@openai/codex-sdk";
+import { Codex, type Thread, type ModelReasoningEffort } from "@openai/codex-sdk";
 import type { SDKAdapter, SDKConfig, PromptConfig, PromptEvent } from "../types.js";
 import {
   createTranslatorState,
@@ -35,11 +35,50 @@ import * as os from "node:os";
 import { WORKSPACE_DIR } from "../../constants.js";
 import { buildSystemPromptText } from "../../utils/system-prompt.js";
 
+// Codex session ID mapping (Netclode session ID -> Codex thread ID)
+const codexThreadMap = new Map<string, string>();
+const NETCLODE_PLACEHOLDER_PREFIX = "NETCLODE_PLACEHOLDER_";
+
+type CodexAuthMode = "api" | "oauth" | "unknown";
+
+function hasCodexApiSuffix(model?: string): boolean {
+  if (!model) return false;
+  return /:api(?::(low|medium|high|minimal|xhigh))?$/.test(model);
+}
+
+function hasCodexOAuthSuffix(model?: string): boolean {
+  if (!model) return false;
+  return /:oauth(?::(low|medium|high|minimal|xhigh))?$/.test(model);
+}
+
+function isUsableApiKey(apiKey?: string): boolean {
+  if (!apiKey) return false;
+  return !apiKey.startsWith(NETCLODE_PLACEHOLDER_PREFIX);
+}
+
+export function resolveCodexAuthMode(config: SDKConfig): CodexAuthMode {
+  if (hasCodexApiSuffix(config.model)) {
+    return "api";
+  }
+  if (hasCodexOAuthSuffix(config.model)) {
+    return "oauth";
+  }
+
+  // Without an explicit suffix, prefer OAuth if both token types are available.
+  if (config.codexAccessToken && config.codexIdToken) {
+    return "oauth";
+  }
+  if (isUsableApiKey(config.openaiApiKey)) {
+    return "api";
+  }
+  return "unknown";
+}
 export class CodexAdapter implements SDKAdapter {
   private config: SDKConfig | null = null;
   private codex: Codex | null = null;
   private thread: Thread | null = null;
   private interruptSignal = false;
+  private abortController: AbortController | null = null;
   private translatorState: TranslatorState = createTranslatorState();
 
   // Cleaned model name (without :api/:oauth/:effort suffixes)
@@ -56,11 +95,11 @@ export class CodexAdapter implements SDKAdapter {
     this.cleanedModel = config.model?.replace(/:(api|oauth)(:(low|medium|high|minimal|xhigh))?$/, "");
     this.reasoningEffort = config.reasoningEffort;
 
-    // Determine auth mode from model suffix or available credentials
-    const modelHasApiSuffix = config.model?.includes(":api");
-    const modelHasOAuthSuffix = config.model?.includes(":oauth");
-    const isApiMode = modelHasApiSuffix || Boolean(config.openaiApiKey && !config.codexAccessToken);
-    const isOAuthMode = modelHasOAuthSuffix || Boolean(config.codexAccessToken && !config.openaiApiKey);
+    // Determine auth mode from model suffix or available credentials.
+    const authMode = resolveCodexAuthMode(config);
+    const isApiMode = authMode === "api";
+    const isOAuthMode = authMode === "oauth";
+    const apiKey = isUsableApiKey(config.openaiApiKey) ? config.openaiApiKey : undefined;
 
     console.log("[codex-adapter] Initializing");
     console.log("[codex-adapter] Model:", this.cleanedModel || "default");
@@ -89,28 +128,28 @@ export class CodexAdapter implements SDKAdapter {
     if (isOAuthMode && config.codexAccessToken && config.codexIdToken) {
       // OAuth mode: write tokens to ~/.codex/auth.json
       // The Codex CLI binary reads credentials from this location
-      await this.writeCodexAuth(config.codexAccessToken, config.codexIdToken, config.codexRefreshToken);
+      await this.writeCodexAuth(config.codexAccessToken, config.codexIdToken);
       console.log("[codex-adapter] Using OAuth authentication (ChatGPT subscription)");
 
       this.codex = new Codex({
         // For OAuth, don't pass apiKey - let it use auth.json
-        // Remove any OPENAI_API_KEY to force OAuth
-        env: buildEnv({ OPENAI_API_KEY: undefined }),
+        // Remove any API-key env vars to force OAuth.
+        env: buildEnv({ OPENAI_API_KEY: undefined, CODEX_API_KEY: undefined }),
       });
-    } else if (isApiMode && config.openaiApiKey) {
+    } else if (isApiMode && apiKey) {
       // API key mode: use OPENAI_API_KEY
       console.log("[codex-adapter] Using API key authentication");
 
       this.codex = new Codex({
-        apiKey: config.openaiApiKey,
-        env: buildEnv({ OPENAI_API_KEY: config.openaiApiKey }),
+        apiKey,
+        env: buildEnv({ OPENAI_API_KEY: apiKey }),
       });
     } else {
-      // Fallback: use environment variable
-      console.log("[codex-adapter] Using environment OPENAI_API_KEY");
+      // Fallback: avoid placeholder API keys and rely on existing Codex auth state.
+      console.log("[codex-adapter] No explicit auth credentials, using existing Codex auth state");
 
       this.codex = new Codex({
-        env: buildEnv(),
+        env: buildEnv({ OPENAI_API_KEY: undefined, CODEX_API_KEY: undefined }),
       });
     }
 
@@ -139,15 +178,19 @@ export class CodexAdapter implements SDKAdapter {
    * Write OAuth tokens to Codex auth file
    * The Codex CLI reads from ~/.codex/auth.json
    */
-  private async writeCodexAuth(accessToken: string, idToken: string, refreshToken?: string): Promise<void> {
+  private async writeCodexAuth(accessToken: string, idToken: string): Promise<void> {
     const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
     await fs.mkdir(codexHome, { recursive: true });
+    const accountId = this.extractAccountIdFromIdToken(idToken);
 
     const authData = {
+      auth_mode: "chatgptAuthTokens",
+      OPENAI_API_KEY: null,
       tokens: {
         access_token: accessToken,
         id_token: idToken,
-        refresh_token: refreshToken || "",
+        refresh_token: "",
+        account_id: accountId,
       },
       last_refresh: new Date().toISOString(),
     };
@@ -155,6 +198,32 @@ export class CodexAdapter implements SDKAdapter {
     const authPath = path.join(codexHome, "auth.json");
     await fs.writeFile(authPath, JSON.stringify(authData, null, 2), { mode: 0o600 });
     console.log("[codex-adapter] OAuth tokens written to", authPath);
+  }
+
+  private extractAccountIdFromIdToken(idToken: string): string | undefined {
+    const parts = idToken.split(".");
+    if (parts.length !== 3) {
+      return undefined;
+    }
+    try {
+      const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8"));
+      const authClaims = payload?.["https://api.openai.com/auth"];
+      if (!authClaims || typeof authClaims !== "object") {
+        return undefined;
+      }
+      return typeof authClaims.chatgpt_account_id === "string" ? authClaims.chatgpt_account_id : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async updateCodexAuth(accessToken: string, idToken: string, _expiresAt?: Date): Promise<void> {
+    await this.writeCodexAuth(accessToken, idToken);
+    if (this.config) {
+      this.config.codexAccessToken = accessToken;
+      this.config.codexIdToken = idToken;
+    }
+    console.log("[codex-adapter] Updated OAuth tokens");
   }
 
   async *executePrompt(sessionId: string, text: string, promptConfig?: PromptConfig): AsyncGenerator<PromptEvent> {
@@ -175,6 +244,7 @@ export class CodexAdapter implements SDKAdapter {
 
     // Clear interrupt signal
     this.clearInterruptSignal();
+    this.abortController = new AbortController();
 
     // Get or create Codex thread (persisted mapping survives pod restarts)
     const existingThreadId = getSdkSessionId(sessionId);
@@ -213,11 +283,14 @@ export class CodexAdapter implements SDKAdapter {
 
     try {
       // Run the prompt with streaming
-      const { events } = await this.thread.runStreamed(text);
+      const { events } = await this.thread.runStreamed(text, {
+        signal: this.abortController.signal,
+      });
 
       for await (const event of events) {
         if (this.interruptSignal) {
-          yield { type: "system", message: "interrupted" };
+          console.log("[codex-adapter] Interrupted by user");
+          yield { type: "error", message: "Prompt interrupted", retryable: true };
           return;
         }
 
@@ -248,22 +321,35 @@ export class CodexAdapter implements SDKAdapter {
       // Emit final result
       yield createResultEvent(this.translatorState);
     } catch (error) {
+      if (this.interruptSignal || this.isAbortError(error)) {
+        console.log("[codex-adapter] Prompt interrupted");
+        yield { type: "error", message: "Prompt interrupted", retryable: true };
+        return;
+      }
       console.error("[codex-adapter] Error during prompt execution:", error);
       yield {
         type: "error",
         message: `Prompt execution error: ${error instanceof Error ? error.message : String(error)}`,
         retryable: false,
       };
+    } finally {
+      this.abortController = null;
     }
   }
 
   setInterruptSignal(): void {
     this.interruptSignal = true;
-    console.log("[codex-adapter] Interrupt signal set");
+    if (this.abortController) {
+      this.abortController.abort();
+      console.log("[codex-adapter] Interrupt signal set and run aborted");
+    } else {
+      console.log("[codex-adapter] Interrupt signal set");
+    }
   }
 
   clearInterruptSignal(): void {
     this.interruptSignal = false;
+    this.abortController = null;
     resetTranslatorState(this.translatorState);
   }
 
@@ -273,8 +359,25 @@ export class CodexAdapter implements SDKAdapter {
 
   async shutdown(): Promise<void> {
     console.log("[codex-adapter] Shutting down...");
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
     this.thread = null;
     this.codex = null;
     resetTranslatorState(this.translatorState);
+  }
+
+  private isAbortError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    if (error.name === "AbortError") {
+      return true;
+    }
+
+    const message = error.message.toLowerCase();
+    return message.includes("aborted") || message.includes("aborterror");
   }
 }

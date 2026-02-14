@@ -53,12 +53,17 @@ WORKDIR /build
 # Install esbuild for bundling
 RUN npm install -g esbuild
 
-# Copy agent source
-COPY services/agent services/agent
+# Copy dependency manifests first for better layer caching
+COPY services/agent/package.json services/agent/package-lock.json services/agent/tsconfig.json /build/services/agent/
 
-# Install agent dependencies
+# Install agent dependencies (only invalidates when manifest changes)
 WORKDIR /build/services/agent
 RUN --mount=type=cache,target=/root/.npm npm install
+RUN npm rebuild node-pty --build-from-source
+
+# Copy source after dependency install to avoid reinstall on every TS edit
+COPY services/agent/src /build/services/agent/src
+COPY services/agent/gen /build/services/agent/gen
 
 # Bundle agent
 RUN esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/agent.js
@@ -158,7 +163,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends unzip && \
 #
 # OpenCode checks if node_modules exists in its config dir before running bun add.
 # By pre-creating this directory with the plugin installed, we skip the ~4s install.
-# Note: @opencode-ai/plugin@1.1.45 has broken workspace references, so we use 1.1.44 as fallback
+# Keep a fixed fallback in case the latest OpenCode binary reports a plugin version
+# that is not yet published on npm.
 RUN OPENCODE_VERSION=$(/usr/local/bin/opencode --version) && \
     export HOME=/opt/bun-cache-home && \
     mkdir -p $HOME/.bun && \
@@ -167,8 +173,8 @@ RUN OPENCODE_VERSION=$(/usr/local/bin/opencode --version) && \
     if /opt/bun add "@opencode-ai/plugin@${OPENCODE_VERSION}" "@opencode-ai/sdk@${OPENCODE_VERSION}" "zod" --exact; then \
       echo "Preinstalled OpenCode plugin ${OPENCODE_VERSION}"; \
     else \
-      echo "Warning: OpenCode plugin ${OPENCODE_VERSION} not found, falling back to 1.1.44"; \
-      /opt/bun add "@opencode-ai/plugin@1.1.44" "@opencode-ai/sdk@1.1.44" "zod@4.1.8" --exact; \
+      echo "Warning: OpenCode plugin ${OPENCODE_VERSION} not found, falling back to 1.1.53"; \
+      /opt/bun add "@opencode-ai/plugin@1.1.53" "@opencode-ai/sdk@1.1.53" "zod@4.3.6" --exact; \
     fi && \
     if [ -d "$HOME/.bun" ]; then mv $HOME/.bun /opt/bun-cache; fi && \
     rm -rf $HOME

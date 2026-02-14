@@ -29,7 +29,6 @@ export interface SDKConfig {
   // Codex SDK OAuth tokens (for ChatGPT auth mode)
   codexAccessToken?: string;
   codexIdToken?: string;
-  codexRefreshToken?: string;
   // Codex reasoning effort (low, medium, high, minimal, xhigh)
   reasoningEffort?: string;
   // Ollama URL for local inference (e.g., "http://ollama.netclode.svc.cluster.local:11434")
@@ -102,4 +101,10 @@ export interface SDKAdapter {
    * Called when the agent is shutting down
    */
   shutdown(): Promise<void>;
+
+  /**
+   * Update short-lived Codex OAuth tokens for running sessions.
+   * Only implemented by the Codex adapter.
+   */
+  updateCodexAuth?(accessToken: string, idToken: string, expiresAt?: Date): Promise<void>;
 }

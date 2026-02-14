@@ -29,30 +29,31 @@
 
     - name: Extract secrets from .env
       ansible.builtin.set_fact:
-        ssh_keys: "{{ env_content_raw | regex_search('(?m)^SSH_AUTHORIZED_KEYS=(.*)$', '\\1') | first | default('') }}"
-        ts_oauth_client_id: "{{ env_content_raw | regex_search('(?m)^TS_OAUTH_CLIENT_ID=(.*)$', '\\1') | first | default('') }}"
-        ts_oauth_client_secret: "{{ env_content_raw | regex_search('(?m)^TS_OAUTH_CLIENT_SECRET=(.*)$', '\\1') | first | default('') }}"
-        tailscale_authkey: "{{ env_content_raw | regex_search('(?m)^TAILSCALE_AUTHKEY=(.*)$', '\\1') | first | default('') }}"
-        anthropic_api_key: "{{ env_content_raw | regex_search('(?m)^ANTHROPIC_API_KEY=(.*)$', '\\1') | first | default('') }}"
-        do_spaces_access_key: "{{ env_content_raw | regex_search('(?m)^DO_SPACES_ACCESS_KEY=(.*)$', '\\1') | first | default('') }}"
-        do_spaces_secret_key: "{{ env_content_raw | regex_search('(?m)^DO_SPACES_SECRET_KEY=(.*)$', '\\1') | first | default('') }}"
-        juicefs_bucket: "{{ env_content_raw | regex_search('(?m)^JUICEFS_BUCKET=(.*)$', '\\1') | first | default('') }}"
-        juicefs_meta_url: "{{ env_content_raw | regex_search('(?m)^JUICEFS_META_URL=(.*)$', '\\1') | first | default('') }}"
-        github_app_id: "{{ env_content_raw | regex_search('(?m)^GITHUB_APP_ID=(.*)$', '\\1') | first | default('') }}"
-        github_app_private_key_b64: "{{ env_content_raw | regex_search('(?m)^GITHUB_APP_PRIVATE_KEY_B64=(.*)$', '\\1') | first | default('') }}"
-        github_installation_id: "{{ env_content_raw | regex_search('(?m)^GITHUB_INSTALLATION_ID=(.*)$', '\\1') | first | default('') }}"
-        kata_vm_cpus: "{{ env_content_raw | regex_search('(?m)^KATA_VM_CPUS=(.*)$', '\\1') | first | default('4') }}"
-        kata_vm_memory_mb: "{{ env_content_raw | regex_search('(?m)^KATA_VM_MEMORY_MB=(.*)$', '\\1') | first | default('4096') }}"
+        ssh_keys: "{{ (env_content_raw | regex_search('(?m)^SSH_AUTHORIZED_KEYS=(.*)$', '\\1') or ['']) | first }}"
+        ts_oauth_client_id: "{{ (env_content_raw | regex_search('(?m)^TS_OAUTH_CLIENT_ID=(.*)$', '\\1') or ['']) | first }}"
+        ts_oauth_client_secret: "{{ (env_content_raw | regex_search('(?m)^TS_OAUTH_CLIENT_SECRET=(.*)$', '\\1') or ['']) | first }}"
+        tailscale_authkey: "{{ (env_content_raw | regex_search('(?m)^TAILSCALE_AUTHKEY=(.*)$', '\\1') or ['']) | first }}"
+        anthropic_api_key: "{{ (env_content_raw | regex_search('(?m)^ANTHROPIC_API_KEY=(.*)$', '\\1') or ['']) | first }}"
+        do_spaces_access_key: "{{ (env_content_raw | regex_search('(?m)^DO_SPACES_ACCESS_KEY=(.*)$', '\\1') or ['']) | first }}"
+        do_spaces_secret_key: "{{ (env_content_raw | regex_search('(?m)^DO_SPACES_SECRET_KEY=(.*)$', '\\1') or ['']) | first }}"
+        juicefs_bucket: "{{ (env_content_raw | regex_search('(?m)^JUICEFS_BUCKET=(.*)$', '\\1') or ['']) | first }}"
+        juicefs_meta_url: "{{ (env_content_raw | regex_search('(?m)^JUICEFS_META_URL=(.*)$', '\\1') or ['']) | first }}"
+        minio_enabled_env: "{{ ((env_content_raw | regex_search('(?m)^MINIO_ENABLED=(.*)$', '\\1') or ['false']) | first | lower) }}"
+        minio_bucket_name_env: "{{ (env_content_raw | regex_search('(?m)^MINIO_BUCKET_NAME=(.*)$', '\\1') or ['netclode-juicefs']) | first }}"
+        minio_api_port_env: "{{ (env_content_raw | regex_search('(?m)^MINIO_API_PORT=(.*)$', '\\1') or ['9000']) | first }}"
+        github_app_id: "{{ (env_content_raw | regex_search('(?m)^GITHUB_APP_ID=(.*)$', '\\1') or ['']) | first }}"
+        github_app_private_key_b64: "{{ (env_content_raw | regex_search('(?m)^GITHUB_APP_PRIVATE_KEY_B64=(.*)$', '\\1') or ['']) | first }}"
+        github_installation_id: "{{ (env_content_raw | regex_search('(?m)^GITHUB_INSTALLATION_ID=(.*)$', '\\1') or ['']) | first }}"
+        kata_vm_cpus: "{{ (env_content_raw | regex_search('(?m)^KATA_VM_CPUS=(.*)$', '\\1') or ['4']) | first }}"
+        kata_vm_memory_mb: "{{ (env_content_raw | regex_search('(?m)^KATA_VM_MEMORY_MB=(.*)$', '\\1') or ['4096']) | first }}"
         github_token: "{{ (env_content_raw | regex_search('(?m)^GITHUB_TOKEN=(.*)$', '\\1') or [''])[0] }}"
         github_copilot_token: "{{ (env_content_raw | regex_search('(?m)^GITHUB_COPILOT_TOKEN=(.*)$', '\\1') or [''])[0] }}"
         openai_api_key: "{{ (env_content_raw | regex_search('(?m)^OPENAI_API_KEY=(.*)$', '\\1') or [''])[0] }}"
-        codex_access_token: "{{ (env_content_raw | regex_search('(?m)^CODEX_ACCESS_TOKEN=(.*)$', '\\1') or [''])[0] }}"
-        codex_id_token: "{{ (env_content_raw | regex_search('(?m)^CODEX_ID_TOKEN=(.*)$', '\\1') or [''])[0] }}"
-        codex_refresh_token: "{{ (env_content_raw | regex_search('(?m)^CODEX_REFRESH_TOKEN=(.*)$', '\\1') or [''])[0] }}"
+        codex_oauth_encryption_key_b64: "{{ (env_content_raw | regex_search('(?m)^CODEX_OAUTH_ENCRYPTION_KEY_B64=(.*)$', '\\1') or [''])[0] }}"
         mistral_api_key: "{{ (env_content_raw | regex_search('(?m)^MISTRAL_API_KEY=(.*)$', '\\1') or [''])[0] }}"
         opencode_api_key: "{{ (env_content_raw | regex_search('(?m)^OPENCODE_API_KEY=(.*)$', '\\1') or [''])[0] }}"
         zai_api_key: "{{ (env_content_raw | regex_search('(?m)^ZAI_API_KEY=(.*)$', '\\1') or [''])[0] }}"
-        max_active_sessions: "{{ env_content_raw | regex_search('(?m)^MAX_ACTIVE_SESSIONS=(.*)$', '\\1') | first | default('5') }}"
+        max_active_sessions: "{{ (env_content_raw | regex_search('(?m)^MAX_ACTIVE_SESSIONS=(.*)$', '\\1') or ['5']) | first }}"
 
 # Host secrets - skip if only deploying k8s secrets
 - name: Deploy host secrets
@@ -123,9 +124,6 @@
             | combine({'opencode': opencode_api_key} if opencode_api_key | length > 0 else {})
             | combine({'zai': zai_api_key} if zai_api_key | length > 0 else {})
             | combine({'github_copilot': github_copilot_token} if github_copilot_token | length > 0 else {})
-            | combine({'codex_access': codex_access_token} if codex_access_token | length > 0 else {})
-            | combine({'codex_id': codex_id_token} if codex_id_token | length > 0 else {})
-            | combine({'codex_refresh': codex_refresh_token} if codex_refresh_token | length > 0 else {})
           }}
 
     # Create secret-proxy-secrets for the proxy (contains real API keys)
@@ -163,9 +161,7 @@
             opencode-api-key: "{{ opencode_api_key }}"
             zai-api-key: "{{ zai_api_key }}"
             github-copilot-token: "{{ github_copilot_token }}"
-            codex-access-token: "{{ codex_access_token }}"
-            codex-id-token: "{{ codex_id_token }}"
-            codex-refresh-token: "{{ codex_refresh_token }}"
+            codex-oauth-encryption-key-b64: "{{ codex_oauth_encryption_key_b64 }}"
             # Placeholders for sandbox (agent sees these, proxy replaces them)
             anthropic-api-key-placeholder: "NETCLODE_PLACEHOLDER_anthropic"
             openai-api-key-placeholder: "NETCLODE_PLACEHOLDER_openai"
@@ -173,9 +169,6 @@
             opencode-api-key-placeholder: "NETCLODE_PLACEHOLDER_opencode"
             zai-api-key-placeholder: "NETCLODE_PLACEHOLDER_zai"
             github-copilot-token-placeholder: "NETCLODE_PLACEHOLDER_github_copilot"
-            codex-access-token-placeholder: "NETCLODE_PLACEHOLDER_codex_access"
-            codex-id-token-placeholder: "NETCLODE_PLACEHOLDER_codex_id"
-            codex-refresh-token-placeholder: "NETCLODE_PLACEHOLDER_codex_refresh"
             # Non-proxied secrets (used directly, not through proxy)
             # GITHUB_TOKEN is for git operations (clone/push) - uses credential helper, not HTTP headers
             github-token: "{{ github_token }}"
@@ -184,7 +177,6 @@
             github-app-private-key: "{{ github_app_private_key_b64 | b64decode }}"
             github-installation-id: "{{ github_installation_id }}"
             tailscale-authkey: "{{ tailscale_authkey }}"
-      when: anthropic_api_key | length > 0
 
     - name: Check if juicefs-secret already exists
       kubernetes.core.k8s_info:
@@ -195,12 +187,72 @@
         kubeconfig: "{{ k3s_kubeconfig }}"
       register: existing_juicefs_secret
 
+    - name: Determine if MinIO storage auto-wiring is enabled
+      ansible.builtin.set_fact:
+        minio_storage_autowire: "{{ minio_enabled_env == 'true' }}"
+
+    - name: Check for persisted MinIO credential files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /var/secrets/minio-root-user
+        - /var/secrets/minio-root-password
+      register: minio_saved_credential_files
+      when:
+        - minio_storage_autowire
+        - do_spaces_access_key | length == 0 or do_spaces_secret_key | length == 0
+
+    - name: Read persisted MinIO root user
+      ansible.builtin.slurp:
+        src: /var/secrets/minio-root-user
+      register: minio_saved_root_user
+      when:
+        - minio_storage_autowire
+        - do_spaces_access_key | length == 0
+        - minio_saved_credential_files.results[0].stat.exists
+
+    - name: Read persisted MinIO root password
+      ansible.builtin.slurp:
+        src: /var/secrets/minio-root-password
+      register: minio_saved_root_password
+      when:
+        - minio_storage_autowire
+        - do_spaces_secret_key | length == 0
+        - minio_saved_credential_files.results[1].stat.exists
+
+    - name: Fill S3 credentials from MinIO persisted credentials
+      ansible.builtin.set_fact:
+        do_spaces_access_key: "{{ do_spaces_access_key if do_spaces_access_key | length > 0 else (minio_saved_root_user.content | default('') | b64decode | trim) }}"
+        do_spaces_secret_key: "{{ do_spaces_secret_key if do_spaces_secret_key | length > 0 else (minio_saved_root_password.content | default('') | b64decode | trim) }}"
+      when: minio_storage_autowire
+
+    - name: Discover host IPv4 for MinIO endpoint
+      ansible.builtin.command: sh -c "ip -4 route get 1.1.1.1 | awk '{print $7; exit}'"
+      register: minio_host_ipv4
+      changed_when: false
+      when:
+        - minio_storage_autowire
+        - juicefs_bucket | length == 0
+
+    - name: Fill JuiceFS bucket from local MinIO endpoint
+      ansible.builtin.set_fact:
+        juicefs_bucket: "http://{{ minio_host_ipv4.stdout | trim }}:{{ minio_api_port_env }}/{{ minio_bucket_name_env }}"
+      when:
+        - minio_storage_autowire
+        - juicefs_bucket | length == 0
+
+    - name: Set default JuiceFS metadata URL
+      ansible.builtin.set_fact:
+        juicefs_meta_url: "redis://redis-juicefs.netclode.svc.cluster.local:6379/0"
+      when: juicefs_meta_url | length == 0
+
     - name: Generate JuiceFS volume name with random suffix
       ansible.builtin.set_fact:
         juicefs_volume_name: "netclode-{{ lookup('password', '/dev/null chars=ascii_lowercase,digits length=6') }}"
       when:
         - existing_juicefs_secret.resources | length == 0
         - do_spaces_access_key | length > 0
+        - do_spaces_secret_key | length > 0
 
     - name: Use existing JuiceFS volume name
       ansible.builtin.set_fact:
@@ -226,4 +278,8 @@
             bucket: "{{ juicefs_bucket }}"
             access-key: "{{ do_spaces_access_key }}"
             secret-key: "{{ do_spaces_secret_key }}"
-      when: do_spaces_access_key | length > 0
+      when:
+        - do_spaces_access_key | length > 0
+        - do_spaces_secret_key | length > 0
+        - juicefs_bucket | length > 0
+        - juicefs_meta_url | length > 0

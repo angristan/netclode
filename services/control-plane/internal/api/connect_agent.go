@@ -13,6 +13,7 @@ import (
 	v1 "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
 	"github.com/angristan/netclode/services/control-plane/gen/netclode/v1/netclodev1connect"
 	"github.com/angristan/netclode/services/control-plane/internal/session"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Ensure ConnectAgentServiceHandler implements the interface
@@ -199,6 +200,9 @@ func (h *ConnectAgentServiceHandler) Connect(ctx context.Context, stream *connec
 	if config.GitHubToken != "" {
 		sessionConfig.GithubToken = &config.GitHubToken
 	}
+	if config.GitHubCopilotToken != "" {
+		sessionConfig.GithubCopilotToken = &config.GitHubCopilotToken
+	}
 	if config.Model != "" {
 		sessionConfig.Model = &config.Model
 	}
@@ -208,14 +212,23 @@ func (h *ConnectAgentServiceHandler) Connect(ctx context.Context, stream *connec
 	if config.CodexIdToken != "" {
 		sessionConfig.CodexIdToken = &config.CodexIdToken
 	}
-	if config.CodexRefreshToken != "" {
-		sessionConfig.CodexRefreshToken = &config.CodexRefreshToken
+	if config.OpenAIAPIKey != "" {
+		sessionConfig.OpenaiApiKey = &config.OpenAIAPIKey
+	}
+	if config.MistralAPIKey != "" {
+		sessionConfig.MistralApiKey = &config.MistralAPIKey
 	}
 	if config.ReasoningEffort != "" {
 		sessionConfig.ReasoningEffort = &config.ReasoningEffort
 	}
 	if config.OllamaURL != "" {
 		sessionConfig.OllamaUrl = &config.OllamaURL
+	}
+	if config.OpenCodeAPIKey != "" {
+		sessionConfig.OpencodeApiKey = &config.OpenCodeAPIKey
+	}
+	if config.ZaiAPIKey != "" {
+		sessionConfig.ZaiApiKey = &config.ZaiAPIKey
 	}
 
 	if err := conn.send(&v1.ControlPlaneMessage{
@@ -447,6 +460,22 @@ func (c *AgentConnection) UpdateGitCredentials(token string, repoAccess v1.RepoA
 	})
 }
 
+// UpdateCodexAuth sends updated short-lived Codex OAuth tokens to the agent.
+func (c *AgentConnection) UpdateCodexAuth(accessToken, idToken string, expiresAt *timestamppb.Timestamp) error {
+	update := &v1.UpdateCodexAuth{
+		AccessToken: accessToken,
+		IdToken:     idToken,
+	}
+	if expiresAt != nil {
+		update.ExpiresAt = expiresAt
+	}
+	return c.Send(&v1.ControlPlaneMessage{
+		Message: &v1.ControlPlaneMessage_UpdateCodexAuth{
+			UpdateCodexAuth: update,
+		},
+	})
+}
+
 // AssignSession assigns a session to a warm pool agent (implements WarmAgentConnection).
 // This pushes the SessionAssigned message to the agent for instant session start.
 func (c *AgentConnection) AssignSession(sessionID string, config *session.AgentSessionConfig) error {
@@ -469,6 +498,9 @@ func (c *AgentConnection) AssignSession(sessionID string, config *session.AgentS
 	if config.GitHubToken != "" {
 		sessionConfig.GithubToken = &config.GitHubToken
 	}
+	if config.GitHubCopilotToken != "" {
+		sessionConfig.GithubCopilotToken = &config.GitHubCopilotToken
+	}
 	if config.Model != "" {
 		sessionConfig.Model = &config.Model
 	}
@@ -478,14 +510,23 @@ func (c *AgentConnection) AssignSession(sessionID string, config *session.AgentS
 	if config.CodexIdToken != "" {
 		sessionConfig.CodexIdToken = &config.CodexIdToken
 	}
-	if config.CodexRefreshToken != "" {
-		sessionConfig.CodexRefreshToken = &config.CodexRefreshToken
+	if config.OpenAIAPIKey != "" {
+		sessionConfig.OpenaiApiKey = &config.OpenAIAPIKey
+	}
+	if config.MistralAPIKey != "" {
+		sessionConfig.MistralApiKey = &config.MistralAPIKey
 	}
 	if config.ReasoningEffort != "" {
 		sessionConfig.ReasoningEffort = &config.ReasoningEffort
 	}
 	if config.OllamaURL != "" {
 		sessionConfig.OllamaUrl = &config.OllamaURL
+	}
+	if config.OpenCodeAPIKey != "" {
+		sessionConfig.OpencodeApiKey = &config.OpenCodeAPIKey
+	}
+	if config.ZaiAPIKey != "" {
+		sessionConfig.ZaiApiKey = &config.ZaiAPIKey
 	}
 
 	slog.Info("Pushing session assignment to warm agent", "sessionID", sessionID, "podName", c.podName)

@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	pb "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
 	"github.com/redis/go-redis/v9"
@@ -23,6 +24,15 @@ type StreamEntryWithID struct {
 	Entry *StreamEntry
 }
 
+// CodexOAuthSessionData is encrypted and stored per session for Codex OAuth mode.
+type CodexOAuthSessionData struct {
+	AccessToken  string     `json:"access_token"`
+	IdToken      string     `json:"id_token"`
+	RefreshToken string     `json:"refresh_token"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
 // Storage defines the interface for session persistence.
 type Storage interface {
 	// Sessions
@@ -31,6 +41,12 @@ type Storage interface {
 	GetAllSessions(ctx context.Context) ([]*pb.Session, error)
 	UpdateSessionStatus(ctx context.Context, id string, status pb.SessionStatus) error
 	UpdateSessionField(ctx context.Context, id, field, value string) error
+	SaveSessionCodexOAuth(ctx context.Context, sessionID string, data *CodexOAuthSessionData) error
+	GetSessionCodexOAuth(ctx context.Context, sessionID string) (*CodexOAuthSessionData, error)
+	DeleteSessionCodexOAuth(ctx context.Context, sessionID string) error
+	SaveCodexOAuth(ctx context.Context, data *CodexOAuthSessionData) error
+	GetCodexOAuth(ctx context.Context) (*CodexOAuthSessionData, error)
+	DeleteCodexOAuth(ctx context.Context) error
 	DeleteSession(ctx context.Context, id string) error
 
 	// Unified Stream (replaces messages, events, and notifications)

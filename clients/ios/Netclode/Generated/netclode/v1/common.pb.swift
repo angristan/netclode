@@ -298,56 +298,56 @@ public struct Netclode_V1_Session: Sendable {
   public var repos: [String] = []
 
   public var repoAccess: Netclode_V1_RepoAccess {
-    get {return _repoAccess ?? .unspecified}
+    get {_repoAccess ?? .unspecified}
     set {_repoAccess = newValue}
   }
   /// Returns true if `repoAccess` has been explicitly set.
-  public var hasRepoAccess: Bool {return self._repoAccess != nil}
+  public var hasRepoAccess: Bool {self._repoAccess != nil}
   /// Clears the value of `repoAccess`. Subsequent reads from it will return its default value.
   public mutating func clearRepoAccess() {self._repoAccess = nil}
 
   public var createdAt: SwiftProtobuf.Google_Protobuf_Timestamp {
-    get {return _createdAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    get {_createdAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
     set {_createdAt = newValue}
   }
   /// Returns true if `createdAt` has been explicitly set.
-  public var hasCreatedAt: Bool {return self._createdAt != nil}
+  public var hasCreatedAt: Bool {self._createdAt != nil}
   /// Clears the value of `createdAt`. Subsequent reads from it will return its default value.
   public mutating func clearCreatedAt() {self._createdAt = nil}
 
   public var lastActiveAt: SwiftProtobuf.Google_Protobuf_Timestamp {
-    get {return _lastActiveAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    get {_lastActiveAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
     set {_lastActiveAt = newValue}
   }
   /// Returns true if `lastActiveAt` has been explicitly set.
-  public var hasLastActiveAt: Bool {return self._lastActiveAt != nil}
+  public var hasLastActiveAt: Bool {self._lastActiveAt != nil}
   /// Clears the value of `lastActiveAt`. Subsequent reads from it will return its default value.
   public mutating func clearLastActiveAt() {self._lastActiveAt = nil}
 
   public var sdkType: Netclode_V1_SdkType {
-    get {return _sdkType ?? .unspecified}
+    get {_sdkType ?? .unspecified}
     set {_sdkType = newValue}
   }
   /// Returns true if `sdkType` has been explicitly set.
-  public var hasSdkType: Bool {return self._sdkType != nil}
+  public var hasSdkType: Bool {self._sdkType != nil}
   /// Clears the value of `sdkType`. Subsequent reads from it will return its default value.
   public mutating func clearSdkType() {self._sdkType = nil}
 
   public var model: String {
-    get {return _model ?? String()}
+    get {_model ?? String()}
     set {_model = newValue}
   }
   /// Returns true if `model` has been explicitly set.
-  public var hasModel: Bool {return self._model != nil}
+  public var hasModel: Bool {self._model != nil}
   /// Clears the value of `model`. Subsequent reads from it will return its default value.
   public mutating func clearModel() {self._model = nil}
 
   public var copilotBackend: Netclode_V1_CopilotBackend {
-    get {return _copilotBackend ?? .unspecified}
+    get {_copilotBackend ?? .unspecified}
     set {_copilotBackend = newValue}
   }
   /// Returns true if `copilotBackend` has been explicitly set.
-  public var hasCopilotBackend: Bool {return self._copilotBackend != nil}
+  public var hasCopilotBackend: Bool {self._copilotBackend != nil}
   /// Clears the value of `copilotBackend`. Subsequent reads from it will return its default value.
   public mutating func clearCopilotBackend() {self._copilotBackend = nil}
 
@@ -370,30 +370,30 @@ public struct Netclode_V1_SessionSummary: Sendable {
   // methods supported on all messages.
 
   public var session: Netclode_V1_Session {
-    get {return _session ?? Netclode_V1_Session()}
+    get {_session ?? Netclode_V1_Session()}
     set {_session = newValue}
   }
   /// Returns true if `session` has been explicitly set.
-  public var hasSession: Bool {return self._session != nil}
+  public var hasSession: Bool {self._session != nil}
   /// Clears the value of `session`. Subsequent reads from it will return its default value.
   public mutating func clearSession() {self._session = nil}
 
   public var messageCount: Int32 {
-    get {return _messageCount ?? 0}
+    get {_messageCount ?? 0}
     set {_messageCount = newValue}
   }
   /// Returns true if `messageCount` has been explicitly set.
-  public var hasMessageCount: Bool {return self._messageCount != nil}
+  public var hasMessageCount: Bool {self._messageCount != nil}
   /// Clears the value of `messageCount`. Subsequent reads from it will return its default value.
   public mutating func clearMessageCount() {self._messageCount = nil}
 
   /// Cursor for resuming
   public var lastStreamID: String {
-    get {return _lastStreamID ?? String()}
+    get {_lastStreamID ?? String()}
     set {_lastStreamID = newValue}
   }
   /// Returns true if `lastStreamID` has been explicitly set.
-  public var hasLastStreamID: Bool {return self._lastStreamID != nil}
+  public var hasLastStreamID: Bool {self._lastStreamID != nil}
   /// Clears the value of `lastStreamID`. Subsequent reads from it will return its default value.
   public mutating func clearLastStreamID() {self._lastStreamID = nil}
 
@@ -413,160 +413,151 @@ public struct Netclode_V1_SessionConfig: @unchecked Sendable {
   // methods supported on all messages.
 
   public var sessionID: String {
-    get {return _storage._sessionID}
+    get {_storage._sessionID}
     set {_uniqueStorage()._sessionID = newValue}
   }
 
   public var workspaceDir: String {
-    get {return _storage._workspaceDir}
+    get {_storage._workspaceDir}
     set {_uniqueStorage()._workspaceDir = newValue}
   }
 
   public var githubToken: String {
-    get {return _storage._githubToken ?? String()}
+    get {_storage._githubToken ?? String()}
     set {_uniqueStorage()._githubToken = newValue}
   }
   /// Returns true if `githubToken` has been explicitly set.
-  public var hasGithubToken: Bool {return _storage._githubToken != nil}
+  public var hasGithubToken: Bool {_storage._githubToken != nil}
   /// Clears the value of `githubToken`. Subsequent reads from it will return its default value.
   public mutating func clearGithubToken() {_uniqueStorage()._githubToken = nil}
 
   public var repos: [String] {
-    get {return _storage._repos}
+    get {_storage._repos}
     set {_uniqueStorage()._repos = newValue}
   }
 
   public var repoAccess: Netclode_V1_RepoAccess {
-    get {return _storage._repoAccess ?? .unspecified}
+    get {_storage._repoAccess ?? .unspecified}
     set {_uniqueStorage()._repoAccess = newValue}
   }
   /// Returns true if `repoAccess` has been explicitly set.
-  public var hasRepoAccess: Bool {return _storage._repoAccess != nil}
+  public var hasRepoAccess: Bool {_storage._repoAccess != nil}
   /// Clears the value of `repoAccess`. Subsequent reads from it will return its default value.
   public mutating func clearRepoAccess() {_uniqueStorage()._repoAccess = nil}
 
   public var controlPlaneURL: String {
-    get {return _storage._controlPlaneURL}
+    get {_storage._controlPlaneURL}
     set {_uniqueStorage()._controlPlaneURL = newValue}
   }
 
   public var sdkType: Netclode_V1_SdkType {
-    get {return _storage._sdkType ?? .unspecified}
+    get {_storage._sdkType ?? .unspecified}
     set {_uniqueStorage()._sdkType = newValue}
   }
   /// Returns true if `sdkType` has been explicitly set.
-  public var hasSdkType: Bool {return _storage._sdkType != nil}
+  public var hasSdkType: Bool {_storage._sdkType != nil}
   /// Clears the value of `sdkType`. Subsequent reads from it will return its default value.
   public mutating func clearSdkType() {_uniqueStorage()._sdkType = nil}
 
   public var model: String {
-    get {return _storage._model ?? String()}
+    get {_storage._model ?? String()}
     set {_uniqueStorage()._model = newValue}
   }
   /// Returns true if `model` has been explicitly set.
-  public var hasModel: Bool {return _storage._model != nil}
+  public var hasModel: Bool {_storage._model != nil}
   /// Clears the value of `model`. Subsequent reads from it will return its default value.
   public mutating func clearModel() {_uniqueStorage()._model = nil}
 
   public var copilotBackend: Netclode_V1_CopilotBackend {
-    get {return _storage._copilotBackend ?? .unspecified}
+    get {_storage._copilotBackend ?? .unspecified}
     set {_uniqueStorage()._copilotBackend = newValue}
   }
   /// Returns true if `copilotBackend` has been explicitly set.
-  public var hasCopilotBackend: Bool {return _storage._copilotBackend != nil}
+  public var hasCopilotBackend: Bool {_storage._copilotBackend != nil}
   /// Clears the value of `copilotBackend`. Subsequent reads from it will return its default value.
   public mutating func clearCopilotBackend() {_uniqueStorage()._copilotBackend = nil}
 
   public var githubCopilotToken: String {
-    get {return _storage._githubCopilotToken ?? String()}
+    get {_storage._githubCopilotToken ?? String()}
     set {_uniqueStorage()._githubCopilotToken = newValue}
   }
   /// Returns true if `githubCopilotToken` has been explicitly set.
-  public var hasGithubCopilotToken: Bool {return _storage._githubCopilotToken != nil}
+  public var hasGithubCopilotToken: Bool {_storage._githubCopilotToken != nil}
   /// Clears the value of `githubCopilotToken`. Subsequent reads from it will return its default value.
   public mutating func clearGithubCopilotToken() {_uniqueStorage()._githubCopilotToken = nil}
 
   public var codexAccessToken: String {
-    get {return _storage._codexAccessToken ?? String()}
+    get {_storage._codexAccessToken ?? String()}
     set {_uniqueStorage()._codexAccessToken = newValue}
   }
   /// Returns true if `codexAccessToken` has been explicitly set.
-  public var hasCodexAccessToken: Bool {return _storage._codexAccessToken != nil}
+  public var hasCodexAccessToken: Bool {_storage._codexAccessToken != nil}
   /// Clears the value of `codexAccessToken`. Subsequent reads from it will return its default value.
   public mutating func clearCodexAccessToken() {_uniqueStorage()._codexAccessToken = nil}
 
   public var codexIDToken: String {
-    get {return _storage._codexIDToken ?? String()}
+    get {_storage._codexIDToken ?? String()}
     set {_uniqueStorage()._codexIDToken = newValue}
   }
   /// Returns true if `codexIDToken` has been explicitly set.
-  public var hasCodexIDToken: Bool {return _storage._codexIDToken != nil}
+  public var hasCodexIDToken: Bool {_storage._codexIDToken != nil}
   /// Clears the value of `codexIDToken`. Subsequent reads from it will return its default value.
   public mutating func clearCodexIDToken() {_uniqueStorage()._codexIDToken = nil}
 
   public var openaiApiKey: String {
-    get {return _storage._openaiApiKey ?? String()}
+    get {_storage._openaiApiKey ?? String()}
     set {_uniqueStorage()._openaiApiKey = newValue}
   }
   /// Returns true if `openaiApiKey` has been explicitly set.
-  public var hasOpenaiApiKey: Bool {return _storage._openaiApiKey != nil}
+  public var hasOpenaiApiKey: Bool {_storage._openaiApiKey != nil}
   /// Clears the value of `openaiApiKey`. Subsequent reads from it will return its default value.
   public mutating func clearOpenaiApiKey() {_uniqueStorage()._openaiApiKey = nil}
 
-  public var codexRefreshToken: String {
-    get {return _storage._codexRefreshToken ?? String()}
-    set {_uniqueStorage()._codexRefreshToken = newValue}
-  }
-  /// Returns true if `codexRefreshToken` has been explicitly set.
-  public var hasCodexRefreshToken: Bool {return _storage._codexRefreshToken != nil}
-  /// Clears the value of `codexRefreshToken`. Subsequent reads from it will return its default value.
-  public mutating func clearCodexRefreshToken() {_uniqueStorage()._codexRefreshToken = nil}
-
   public var reasoningEffort: String {
-    get {return _storage._reasoningEffort ?? String()}
+    get {_storage._reasoningEffort ?? String()}
     set {_uniqueStorage()._reasoningEffort = newValue}
   }
   /// Returns true if `reasoningEffort` has been explicitly set.
-  public var hasReasoningEffort: Bool {return _storage._reasoningEffort != nil}
+  public var hasReasoningEffort: Bool {_storage._reasoningEffort != nil}
   /// Clears the value of `reasoningEffort`. Subsequent reads from it will return its default value.
   public mutating func clearReasoningEffort() {_uniqueStorage()._reasoningEffort = nil}
 
   public var mistralApiKey: String {
-    get {return _storage._mistralApiKey ?? String()}
+    get {_storage._mistralApiKey ?? String()}
     set {_uniqueStorage()._mistralApiKey = newValue}
   }
   /// Returns true if `mistralApiKey` has been explicitly set.
-  public var hasMistralApiKey: Bool {return _storage._mistralApiKey != nil}
+  public var hasMistralApiKey: Bool {_storage._mistralApiKey != nil}
   /// Clears the value of `mistralApiKey`. Subsequent reads from it will return its default value.
   public mutating func clearMistralApiKey() {_uniqueStorage()._mistralApiKey = nil}
 
   /// URL for local Ollama inference (e.g., "http://ollama.netclode.svc.cluster.local:11434")
   public var ollamaURL: String {
-    get {return _storage._ollamaURL ?? String()}
+    get {_storage._ollamaURL ?? String()}
     set {_uniqueStorage()._ollamaURL = newValue}
   }
   /// Returns true if `ollamaURL` has been explicitly set.
-  public var hasOllamaURL: Bool {return _storage._ollamaURL != nil}
+  public var hasOllamaURL: Bool {_storage._ollamaURL != nil}
   /// Clears the value of `ollamaURL`. Subsequent reads from it will return its default value.
   public mutating func clearOllamaURL() {_uniqueStorage()._ollamaURL = nil}
 
   /// OpenCode Zen API key (for paid models, empty/"public" = free tier only)
   public var opencodeApiKey: String {
-    get {return _storage._opencodeApiKey ?? String()}
+    get {_storage._opencodeApiKey ?? String()}
     set {_uniqueStorage()._opencodeApiKey = newValue}
   }
   /// Returns true if `opencodeApiKey` has been explicitly set.
-  public var hasOpencodeApiKey: Bool {return _storage._opencodeApiKey != nil}
+  public var hasOpencodeApiKey: Bool {_storage._opencodeApiKey != nil}
   /// Clears the value of `opencodeApiKey`. Subsequent reads from it will return its default value.
   public mutating func clearOpencodeApiKey() {_uniqueStorage()._opencodeApiKey = nil}
 
   /// Z.AI API key (for GLM-4.7 models via Anthropic-compatible endpoint)
   public var zaiApiKey: String {
-    get {return _storage._zaiApiKey ?? String()}
+    get {_storage._zaiApiKey ?? String()}
     set {_uniqueStorage()._zaiApiKey = newValue}
   }
   /// Returns true if `zaiApiKey` has been explicitly set.
-  public var hasZaiApiKey: Bool {return _storage._zaiApiKey != nil}
+  public var hasZaiApiKey: Bool {_storage._zaiApiKey != nil}
   /// Clears the value of `zaiApiKey`. Subsequent reads from it will return its default value.
   public mutating func clearZaiApiKey() {_uniqueStorage()._zaiApiKey = nil}
 
@@ -588,11 +579,11 @@ public struct Netclode_V1_StreamEntry: Sendable {
   public var id: String = String()
 
   public var timestamp: SwiftProtobuf.Google_Protobuf_Timestamp {
-    get {return _timestamp ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    get {_timestamp ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
     set {_timestamp = newValue}
   }
   /// Returns true if `timestamp` has been explicitly set.
-  public var hasTimestamp: Bool {return self._timestamp != nil}
+  public var hasTimestamp: Bool {self._timestamp != nil}
   /// Clears the value of `timestamp`. Subsequent reads from it will return its default value.
   public mutating func clearTimestamp() {self._timestamp = nil}
 
@@ -678,11 +669,11 @@ public struct Netclode_V1_Error: Sendable {
   public var message: String = String()
 
   public var sessionID: String {
-    get {return _sessionID ?? String()}
+    get {_sessionID ?? String()}
     set {_sessionID = newValue}
   }
   /// Returns true if `sessionID` has been explicitly set.
-  public var hasSessionID: Bool {return self._sessionID != nil}
+  public var hasSessionID: Bool {self._sessionID != nil}
   /// Clears the value of `sessionID`. Subsequent reads from it will return its default value.
   public mutating func clearSessionID() {self._sessionID = nil}
 
@@ -749,11 +740,11 @@ public struct Netclode_V1_Snapshot: Sendable {
   public var name: String = String()
 
   public var createdAt: SwiftProtobuf.Google_Protobuf_Timestamp {
-    get {return _createdAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    get {_createdAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
     set {_createdAt = newValue}
   }
   /// Returns true if `createdAt` has been explicitly set.
-  public var hasCreatedAt: Bool {return self._createdAt != nil}
+  public var hasCreatedAt: Bool {self._createdAt != nil}
   /// Clears the value of `createdAt`. Subsequent reads from it will return its default value.
   public mutating func clearCreatedAt() {self._createdAt = nil}
 
@@ -786,11 +777,11 @@ public struct Netclode_V1_GitHubRepo: Sendable {
   public var `private`: Bool = false
 
   public var description_p: String {
-    get {return _description_p ?? String()}
+    get {_description_p ?? String()}
     set {_description_p = newValue}
   }
   /// Returns true if `description_p` has been explicitly set.
-  public var hasDescription_p: Bool {return self._description_p != nil}
+  public var hasDescription_p: Bool {self._description_p != nil}
   /// Clears the value of `description_p`. Subsequent reads from it will return its default value.
   public mutating func clearDescription_p() {self._description_p = nil}
 
@@ -814,20 +805,20 @@ public struct Netclode_V1_GitFileChange: Sendable {
   public var staged: Bool = false
 
   public var linesAdded: Int32 {
-    get {return _linesAdded ?? 0}
+    get {_linesAdded ?? 0}
     set {_linesAdded = newValue}
   }
   /// Returns true if `linesAdded` has been explicitly set.
-  public var hasLinesAdded: Bool {return self._linesAdded != nil}
+  public var hasLinesAdded: Bool {self._linesAdded != nil}
   /// Clears the value of `linesAdded`. Subsequent reads from it will return its default value.
   public mutating func clearLinesAdded() {self._linesAdded = nil}
 
   public var linesRemoved: Int32 {
-    get {return _linesRemoved ?? 0}
+    get {_linesRemoved ?? 0}
     set {_linesRemoved = newValue}
   }
   /// Returns true if `linesRemoved` has been explicitly set.
-  public var hasLinesRemoved: Bool {return self._linesRemoved != nil}
+  public var hasLinesRemoved: Bool {self._linesRemoved != nil}
   /// Clears the value of `linesRemoved`. Subsequent reads from it will return its default value.
   public mutating func clearLinesRemoved() {self._linesRemoved = nil}
 
@@ -852,51 +843,51 @@ public struct Netclode_V1_ModelInfo: Sendable {
   public var name: String = String()
 
   public var provider: String {
-    get {return _provider ?? String()}
+    get {_provider ?? String()}
     set {_provider = newValue}
   }
   /// Returns true if `provider` has been explicitly set.
-  public var hasProvider: Bool {return self._provider != nil}
+  public var hasProvider: Bool {self._provider != nil}
   /// Clears the value of `provider`. Subsequent reads from it will return its default value.
   public mutating func clearProvider() {self._provider = nil}
 
   public var billingMultiplier: Double {
-    get {return _billingMultiplier ?? 0}
+    get {_billingMultiplier ?? 0}
     set {_billingMultiplier = newValue}
   }
   /// Returns true if `billingMultiplier` has been explicitly set.
-  public var hasBillingMultiplier: Bool {return self._billingMultiplier != nil}
+  public var hasBillingMultiplier: Bool {self._billingMultiplier != nil}
   /// Clears the value of `billingMultiplier`. Subsequent reads from it will return its default value.
   public mutating func clearBillingMultiplier() {self._billingMultiplier = nil}
 
   public var capabilities: [String] = []
 
   public var reasoningEffort: String {
-    get {return _reasoningEffort ?? String()}
+    get {_reasoningEffort ?? String()}
     set {_reasoningEffort = newValue}
   }
   /// Returns true if `reasoningEffort` has been explicitly set.
-  public var hasReasoningEffort: Bool {return self._reasoningEffort != nil}
+  public var hasReasoningEffort: Bool {self._reasoningEffort != nil}
   /// Clears the value of `reasoningEffort`. Subsequent reads from it will return its default value.
   public mutating func clearReasoningEffort() {self._reasoningEffort = nil}
 
   /// For Ollama: whether the model is downloaded locally
   public var downloaded: Bool {
-    get {return _downloaded ?? false}
+    get {_downloaded ?? false}
     set {_downloaded = newValue}
   }
   /// Returns true if `downloaded` has been explicitly set.
-  public var hasDownloaded: Bool {return self._downloaded != nil}
+  public var hasDownloaded: Bool {self._downloaded != nil}
   /// Clears the value of `downloaded`. Subsequent reads from it will return its default value.
   public mutating func clearDownloaded() {self._downloaded = nil}
 
   /// For Ollama: model size in bytes
   public var sizeBytes: Int64 {
-    get {return _sizeBytes ?? 0}
+    get {_sizeBytes ?? 0}
     set {_sizeBytes = newValue}
   }
   /// Returns true if `sizeBytes` has been explicitly set.
-  public var hasSizeBytes: Bool {return self._sizeBytes != nil}
+  public var hasSizeBytes: Bool {self._sizeBytes != nil}
   /// Clears the value of `sizeBytes`. Subsequent reads from it will return its default value.
   public mutating func clearSizeBytes() {self._sizeBytes = nil}
 
@@ -920,20 +911,20 @@ public struct Netclode_V1_CopilotAuthStatus: Sendable {
   public var isAuthenticated: Bool = false
 
   public var authType: String {
-    get {return _authType ?? String()}
+    get {_authType ?? String()}
     set {_authType = newValue}
   }
   /// Returns true if `authType` has been explicitly set.
-  public var hasAuthType: Bool {return self._authType != nil}
+  public var hasAuthType: Bool {self._authType != nil}
   /// Clears the value of `authType`. Subsequent reads from it will return its default value.
   public mutating func clearAuthType() {self._authType = nil}
 
   public var login: String {
-    get {return _login ?? String()}
+    get {_login ?? String()}
     set {_login = newValue}
   }
   /// Returns true if `login` has been explicitly set.
-  public var hasLogin: Bool {return self._login != nil}
+  public var hasLogin: Bool {self._login != nil}
   /// Clears the value of `login`. Subsequent reads from it will return its default value.
   public mutating func clearLogin() {self._login = nil}
 
@@ -958,11 +949,11 @@ public struct Netclode_V1_CopilotPremiumQuota: Sendable {
   public var remaining: Int32 = 0
 
   public var resetAt: String {
-    get {return _resetAt ?? String()}
+    get {_resetAt ?? String()}
     set {_resetAt = newValue}
   }
   /// Returns true if `resetAt` has been explicitly set.
-  public var hasResetAt: Bool {return self._resetAt != nil}
+  public var hasResetAt: Bool {self._resetAt != nil}
   /// Clears the value of `resetAt`. Subsequent reads from it will return its default value.
   public mutating func clearResetAt() {self._resetAt = nil}
 
@@ -1137,7 +1128,7 @@ extension Netclode_V1_SessionSummary: SwiftProtobuf.Message, SwiftProtobuf._Mess
 
 extension Netclode_V1_SessionConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionConfig"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}workspace_dir\0\u{3}github_token\0\u{1}repos\0\u{3}repo_access\0\u{3}control_plane_url\0\u{3}sdk_type\0\u{1}model\0\u{3}copilot_backend\0\u{3}github_copilot_token\0\u{3}codex_access_token\0\u{3}codex_id_token\0\u{3}openai_api_key\0\u{3}codex_refresh_token\0\u{3}reasoning_effort\0\u{3}mistral_api_key\0\u{3}ollama_url\0\u{3}opencode_api_key\0\u{3}zai_api_key\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}workspace_dir\0\u{3}github_token\0\u{1}repos\0\u{3}repo_access\0\u{3}control_plane_url\0\u{3}sdk_type\0\u{1}model\0\u{3}copilot_backend\0\u{3}github_copilot_token\0\u{3}codex_access_token\0\u{3}codex_id_token\0\u{3}openai_api_key\0\u{4}\u{2}reasoning_effort\0\u{3}mistral_api_key\0\u{3}ollama_url\0\u{3}opencode_api_key\0\u{3}zai_api_key\0")
 
   fileprivate class _StorageClass {
     var _sessionID: String = String()
@@ -1153,7 +1144,6 @@ extension Netclode_V1_SessionConfig: SwiftProtobuf.Message, SwiftProtobuf._Messa
     var _codexAccessToken: String? = nil
     var _codexIDToken: String? = nil
     var _openaiApiKey: String? = nil
-    var _codexRefreshToken: String? = nil
     var _reasoningEffort: String? = nil
     var _mistralApiKey: String? = nil
     var _ollamaURL: String? = nil
@@ -1182,7 +1172,6 @@ extension Netclode_V1_SessionConfig: SwiftProtobuf.Message, SwiftProtobuf._Messa
       _codexAccessToken = source._codexAccessToken
       _codexIDToken = source._codexIDToken
       _openaiApiKey = source._openaiApiKey
-      _codexRefreshToken = source._codexRefreshToken
       _reasoningEffort = source._reasoningEffort
       _mistralApiKey = source._mistralApiKey
       _ollamaURL = source._ollamaURL
@@ -1219,7 +1208,6 @@ extension Netclode_V1_SessionConfig: SwiftProtobuf.Message, SwiftProtobuf._Messa
         case 11: try { try decoder.decodeSingularStringField(value: &_storage._codexAccessToken) }()
         case 12: try { try decoder.decodeSingularStringField(value: &_storage._codexIDToken) }()
         case 13: try { try decoder.decodeSingularStringField(value: &_storage._openaiApiKey) }()
-        case 14: try { try decoder.decodeSingularStringField(value: &_storage._codexRefreshToken) }()
         case 15: try { try decoder.decodeSingularStringField(value: &_storage._reasoningEffort) }()
         case 16: try { try decoder.decodeSingularStringField(value: &_storage._mistralApiKey) }()
         case 17: try { try decoder.decodeSingularStringField(value: &_storage._ollamaURL) }()
@@ -1276,9 +1264,6 @@ extension Netclode_V1_SessionConfig: SwiftProtobuf.Message, SwiftProtobuf._Messa
       try { if let v = _storage._openaiApiKey {
         try visitor.visitSingularStringField(value: v, fieldNumber: 13)
       } }()
-      try { if let v = _storage._codexRefreshToken {
-        try visitor.visitSingularStringField(value: v, fieldNumber: 14)
-      } }()
       try { if let v = _storage._reasoningEffort {
         try visitor.visitSingularStringField(value: v, fieldNumber: 15)
       } }()
@@ -1316,7 +1301,6 @@ extension Netclode_V1_SessionConfig: SwiftProtobuf.Message, SwiftProtobuf._Messa
         if _storage._codexAccessToken != rhs_storage._codexAccessToken {return false}
         if _storage._codexIDToken != rhs_storage._codexIDToken {return false}
         if _storage._openaiApiKey != rhs_storage._openaiApiKey {return false}
-        if _storage._codexRefreshToken != rhs_storage._codexRefreshToken {return false}
         if _storage._reasoningEffort != rhs_storage._reasoningEffort {return false}
         if _storage._mistralApiKey != rhs_storage._mistralApiKey {return false}
         if _storage._ollamaURL != rhs_storage._ollamaURL {return false}

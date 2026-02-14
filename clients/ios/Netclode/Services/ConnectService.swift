@@ -172,17 +172,22 @@ final class ConnectService {
     ///   - serverURL: The base server URL (e.g., "netclode-control-plane" or "http://localhost:3000")
     ///   - connectPort: Optional port override for the Connect protocol. If empty, uses default logic.
     func connect(to serverURL: String, connectPort: String = "") {
-        // Allow connecting from disconnected or suspended states
-        switch connectionState {
-        case .disconnected, .suspended:
-            break
-        default:
-            return
-        }
-        
+        // Always honor explicit user reconnect requests, even while reconnecting.
+        // This lets users recover from a stale/incorrect host without restarting the app.
         self.serverURL = serverURL
         self.connectPortOverride = connectPort
-        
+
+        // Cancel any in-flight reconnect loop before starting a fresh connect attempt.
+        reconnectTask?.cancel()
+
+        // Tear down active state so the next attempt uses the updated target.
+        receiveTask?.cancel()
+        keepAliveTask?.cancel()
+        stream = nil
+        client = nil
+        serviceClient = nil
+        connectionState = .disconnected(reason: .userInitiated)
+
         Task {
             await performConnect()
         }
@@ -459,6 +464,9 @@ final class ConnectService {
             
         case .portExposed(let msg):
             return .portExposed(sessionId: msg.sessionID, port: Int(msg.port), previewUrl: msg.previewURL)
+
+        case .portUnexposed(let msg):
+            return .portUnexposed(sessionId: msg.sessionID, port: Int(msg.port))
             
         case .githubRepos(let msg):
             return .githubRepos(repos: msg.repos.map { convertGitHubRepo($0) })
@@ -542,6 +550,15 @@ final class ConnectService {
                 defaultVcpus: msg.defaultVcpus,
                 defaultMemoryMB: msg.defaultMemoryMb
             ))
+
+        case .codexAuthStarted:
+            return nil
+
+        case .codexAuthStatus:
+            return nil
+
+        case .codexAuthLoggedOut:
+            return nil
 
         case .none:
             return nil
@@ -740,6 +757,14 @@ final class ConnectService {
                 process: payload.hasProcess ? payload.process : nil,
                 previewUrl: payload.hasPreviewURL ? payload.previewURL : nil
             ))
+
+        case .portUnexposed:
+            let payload = proto.portUnexposed
+            return .portUnexposed(PortUnexposedEvent(
+                id: id,
+                timestamp: timestamp,
+                port: Int(payload.port)
+            ))
             
         case .repoClone:
             let payload = proto.repoClone
@@ -896,7 +921,7 @@ final class ConnectService {
                     )
                 }
                 
-            case .thinking, .toolStart, .toolInput, .toolOutput, .toolEnd, .portExposed, .repoClone, .agentDisconnected, .agentReconnected:
+            case .thinking, .toolStart, .toolInput, .toolOutput, .toolEnd, .portExposed, .portUnexposed, .repoClone, .agentDisconnected, .agentReconnected:
                 let timestamp = entry.hasTimestamp ? entry.timestamp.date : Date()
                 let event = convertAgentEvent(agentEvent, timestamp: timestamp, partial: entry.partial)
                 return .agentEvent(sessionId: sessionId, event: event)
@@ -1006,6 +1031,11 @@ final class ConnectService {
             port = Int(payload.port)
             process = payload.hasProcess ? payload.process : nil
             previewUrl = payload.hasPreviewURL ? payload.previewURL : nil
+
+        case .portUnexposed:
+            kind = "port_unexposed"
+            let payload = proto.portUnexposed
+            port = Int(payload.port)
             
         case .repoClone:
             kind = "repo_clone"
@@ -1261,7 +1291,7 @@ final class ConnectService {
     private func recordActivity() {
         lastActivityAt = Date()
     }
-    
+
     private func convertToProtoMessage(_ message: ClientMessage) -> Netclode_V1_ClientMessage {
         var proto = Netclode_V1_ClientMessage()
         
@@ -1355,6 +1385,12 @@ final class ConnectService {
             req.sessionID = sessionId
             req.port = Int32(port)
             proto.message = .exposePort(req)
+
+        case .portUnexpose(let sessionId, let port):
+            var req = Netclode_V1_UnexposePortRequest()
+            req.sessionID = sessionId
+            req.port = Int32(port)
+            proto.message = .unexposePort(req)
             
         case .sessionOpen(let id, let lastMessageId, let lastNotificationId):
             var req = Netclode_V1_OpenSessionRequest()

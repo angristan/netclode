@@ -9,6 +9,7 @@ import (
 
 	pb "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -50,6 +51,25 @@ func (m *Manager) SendPrompt(ctx context.Context, sessionID, text string) error 
 			m.updateSessionStatus(ctx, sessionID, pb.SessionStatus_SESSION_STATUS_RUNNING)
 		}
 		return nil
+	}
+
+	// Ensure Codex OAuth access/id tokens are fresh before prompt execution.
+	// Refresh token is stored server-side only and never sent to sandbox.
+	if state.Session.SdkType != nil && *state.Session.SdkType == pb.SdkType_SDK_TYPE_CODEX && state.Session.Model != nil {
+		authMode, _ := parseCodexAuthModeAndEffort(*state.Session.Model)
+		if authMode == "oauth" {
+			oauthData, err := m.prepareCodexOAuthForPrompt(ctx, sessionID)
+			if err != nil {
+				return fmt.Errorf("prepare codex oauth: %w", err)
+			}
+			var expiresAt *timestamppb.Timestamp
+			if oauthData.ExpiresAt != nil {
+				expiresAt = timestamppb.New(*oauthData.ExpiresAt)
+			}
+			if err := agent.UpdateCodexAuth(oauthData.AccessToken, oauthData.IdToken, expiresAt); err != nil {
+				return fmt.Errorf("send codex oauth update to agent: %w", err)
+			}
+		}
 	}
 
 	// Persist and broadcast user message (emitUserMessage does both via publishStreamEntry)

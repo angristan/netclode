@@ -1,0 +1,6 @@
+---
+dev_builder_packages:
+  - docker.io
+  - docker-buildx
+
+dev_builder_user: "{{ ansible_user | default('ubuntu') }}"

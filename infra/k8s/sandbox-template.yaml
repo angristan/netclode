@@ -121,24 +121,6 @@ spec:
                   name: netclode-secrets
                   key: github-copilot-token-placeholder
                   optional: true
-            - name: CODEX_ACCESS_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: netclode-secrets
-                  key: codex-access-token-placeholder
-                  optional: true
-            - name: CODEX_ID_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: netclode-secrets
-                  key: codex-id-token-placeholder
-                  optional: true
-            - name: CODEX_REFRESH_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: netclode-secrets
-                  key: codex-refresh-token-placeholder
-                  optional: true
             # GITHUB_TOKEN is NOT proxied - used for git credential helper (clone/push)
             # Git embeds credentials in URL, doesn't use HTTP Authorization headers
             - name: GITHUB_TOKEN

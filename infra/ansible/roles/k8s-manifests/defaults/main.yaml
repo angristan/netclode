@@ -1,3 +1,9 @@
 ---
 # k8s-manifests defaults
 # The manifest directory is set dynamically in tasks
+control_plane_image: "ghcr.io/angristan/netclode-control-plane:latest"
+agent_image: "ghcr.io/angristan/netclode-agent:latest"
+image_pull_secret_name: ""
+image_pull_secret_registry: "ghcr.io"
+image_pull_secret_username: ""
+image_pull_secret_password: ""

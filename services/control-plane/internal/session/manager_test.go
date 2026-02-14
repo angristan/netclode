@@ -2,6 +2,12 @@ package session
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -11,7 +17,10 @@ import (
 	"github.com/angristan/netclode/services/control-plane/internal/k8s"
 	"github.com/angristan/netclode/services/control-plane/internal/storage"
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // mockRuntime implements k8s.Runtime for testing
@@ -25,15 +34,26 @@ type mockRuntime struct {
 	createdSandboxes []string
 	createdClaims    []string
 	createdServices  []string
+	exposedPorts     map[string]map[int]bool
 	labeledSandboxes map[string]string // sandboxName -> sessionID
 	readyCallbacks   map[string][]k8s.SandboxReadyCallback
+	createSandboxEnv map[string]map[string]string
+	pvcExists        map[string]bool
+	restoreSnapshot  []string
+	previewHostname  string
+	previewHostErr   error
+	unexposePortErr  error
 }
 
 func newMockRuntime() *mockRuntime {
 	return &mockRuntime{
 		sandboxes:        make(map[string]*k8s.SandboxStatusInfo),
+		exposedPorts:     make(map[string]map[int]bool),
 		labeledSandboxes: make(map[string]string),
 		readyCallbacks:   make(map[string][]k8s.SandboxReadyCallback),
+		createSandboxEnv: make(map[string]map[string]string),
+		pvcExists:        make(map[string]bool),
+		restoreSnapshot:  make([]string, 0),
 	}
 }
 
@@ -41,6 +61,11 @@ func (m *mockRuntime) CreateSandbox(ctx context.Context, sessionID string, env m
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.createdSandboxes = append(m.createdSandboxes, sessionID)
+	envCopy := make(map[string]string, len(env))
+	for k, v := range env {
+		envCopy[k] = v
+	}
+	m.createSandboxEnv[sessionID] = envCopy
 	m.sandboxes[sessionID] = &k8s.SandboxStatusInfo{Exists: true, Ready: true, ServiceFQDN: "test.local"}
 	return nil
 }
@@ -130,7 +155,34 @@ func (m *mockRuntime) ListTailscaleServices(ctx context.Context) ([]string, erro
 }
 
 func (m *mockRuntime) ExposePort(ctx context.Context, sessionID string, port int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ports, exists := m.exposedPorts[sessionID]
+	if !exists {
+		ports = make(map[int]bool)
+		m.exposedPorts[sessionID] = ports
+	}
+	ports[port] = true
 	return nil
+}
+
+func (m *mockRuntime) UnexposePort(ctx context.Context, sessionID string, port int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.unexposePortErr != nil {
+		return m.unexposePortErr
+	}
+	if ports, exists := m.exposedPorts[sessionID]; exists {
+		delete(ports, port)
+	}
+	return nil
+}
+
+func (m *mockRuntime) GetSandboxPreviewHostname(ctx context.Context, sessionID string) (string, error) {
+	if m.previewHostname != "" {
+		return m.previewHostname, m.previewHostErr
+	}
+	return "sandbox-" + sessionID, m.previewHostErr
 }
 
 func (m *mockRuntime) CreateOrLabelPoolSandbox(ctx context.Context, sessionID string, fromPool bool, env map[string]string) error {
@@ -200,7 +252,20 @@ func (m *mockRuntime) GetPVCName(ctx context.Context, sessionID string) (string,
 	return "", nil
 }
 
+func (m *mockRuntime) PVCExists(ctx context.Context, pvcName string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	exists, ok := m.pvcExists[pvcName]
+	if !ok {
+		return true, nil
+	}
+	return exists, nil
+}
+
 func (m *mockRuntime) CreatePVCFromSnapshot(ctx context.Context, sessionID, snapshotID string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.restoreSnapshot = append(m.restoreSnapshot, snapshotID)
 	return "agent-home-sess-" + sessionID, nil
 }
 
@@ -247,13 +312,22 @@ func (m *mockRuntime) Close() {
 
 // mockStorage implements storage.Storage for testing
 type mockStorage struct {
-	mu       sync.Mutex
-	sessions map[string]*pb.Session
+	mu          sync.Mutex
+	sessions    map[string]*pb.Session
+	streams     map[string][]storage.StreamEntryWithID
+	oauth       map[string]*storage.CodexOAuthSessionData
+	oauthGlobal *storage.CodexOAuthSessionData
+	pvcNames    map[string]string
+	snapshots   map[string][]*pb.Snapshot
 }
 
 func newMockStorage() *mockStorage {
 	return &mockStorage{
-		sessions: make(map[string]*pb.Session),
+		sessions:  make(map[string]*pb.Session),
+		streams:   make(map[string][]storage.StreamEntryWithID),
+		oauth:     make(map[string]*storage.CodexOAuthSessionData),
+		pvcNames:  make(map[string]string),
+		snapshots: make(map[string][]*pb.Snapshot),
 	}
 }
 
@@ -296,31 +370,166 @@ func (m *mockStorage) UpdateSessionField(ctx context.Context, id, field, value s
 	return nil
 }
 
+func (m *mockStorage) SaveSessionCodexOAuth(ctx context.Context, sessionID string, data *storage.CodexOAuthSessionData) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if data == nil {
+		delete(m.oauth, sessionID)
+		return nil
+	}
+	c := *data
+	m.oauth[sessionID] = &c
+	return nil
+}
+
+func (m *mockStorage) GetSessionCodexOAuth(ctx context.Context, sessionID string) (*storage.CodexOAuthSessionData, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	data := m.oauth[sessionID]
+	if data == nil {
+		return nil, nil
+	}
+	c := *data
+	return &c, nil
+}
+
+func (m *mockStorage) DeleteSessionCodexOAuth(ctx context.Context, sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.oauth, sessionID)
+	return nil
+}
+
+func (m *mockStorage) SaveCodexOAuth(ctx context.Context, data *storage.CodexOAuthSessionData) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if data == nil {
+		m.oauthGlobal = nil
+		return nil
+	}
+	c := *data
+	m.oauthGlobal = &c
+	return nil
+}
+
+func (m *mockStorage) GetCodexOAuth(ctx context.Context) (*storage.CodexOAuthSessionData, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.oauthGlobal == nil {
+		return nil, nil
+	}
+	c := *m.oauthGlobal
+	return &c, nil
+}
+
+func (m *mockStorage) DeleteCodexOAuth(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.oauthGlobal = nil
+	return nil
+}
+
 func (m *mockStorage) DeleteSession(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.sessions, id)
+	delete(m.oauth, id)
 	return nil
 }
 
 // Unified Stream methods (replaces messages, events, and notifications)
 func (m *mockStorage) AppendStreamEntry(ctx context.Context, sessionID string, entry *storage.StreamEntry) (string, error) {
-	return "0-0", nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	stream := m.streams[sessionID]
+	id := strconv.Itoa(len(stream)+1) + "-0"
+	entryCopy := *entry
+	m.streams[sessionID] = append(stream, storage.StreamEntryWithID{
+		ID:    id,
+		Entry: &entryCopy,
+	})
+	return id, nil
 }
 
 func (m *mockStorage) GetStreamEntries(ctx context.Context, sessionID string, afterID string, limit int) ([]storage.StreamEntryWithID, error) {
-	return nil, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.filterStreamEntriesLocked(sessionID, afterID, limit, nil), nil
 }
 
 func (m *mockStorage) GetStreamEntriesByTypes(ctx context.Context, sessionID string, afterID string, limit int, types []string) ([]storage.StreamEntryWithID, error) {
-	return nil, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.filterStreamEntriesLocked(sessionID, afterID, limit, types), nil
 }
 
 func (m *mockStorage) GetLastStreamID(ctx context.Context, sessionID string) (string, error) {
-	return "0-0", nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	stream := m.streams[sessionID]
+	if len(stream) == 0 {
+		return "0-0", nil
+	}
+	return stream[len(stream)-1].ID, nil
+}
+
+func (m *mockStorage) filterStreamEntriesLocked(sessionID, afterID string, limit int, types []string) []storage.StreamEntryWithID {
+	stream := m.streams[sessionID]
+	if len(stream) == 0 {
+		return nil
+	}
+
+	typeFilter := map[string]bool{}
+	for _, t := range types {
+		typeFilter[t] = true
+	}
+
+	afterSeq := 0
+	if afterID != "" && afterID != "0" {
+		afterSeq = parseStreamSeq(afterID)
+	}
+
+	result := make([]storage.StreamEntryWithID, 0, len(stream))
+	for _, e := range stream {
+		if parseStreamSeq(e.ID) <= afterSeq {
+			continue
+		}
+		if len(typeFilter) > 0 && !typeFilter[e.Entry.Type] {
+			continue
+		}
+		result = append(result, e)
+		if limit > 0 && len(result) >= limit {
+			break
+		}
+	}
+	return result
+}
+
+func parseStreamSeq(id string) int {
+	parts := strings.SplitN(id, "-", 2)
+	if len(parts) == 0 {
+		return 0
+	}
+	n, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func (m *mockStorage) TruncateStreamAfter(ctx context.Context, sessionID string, afterID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	afterSeq := parseStreamSeq(afterID)
+	stream := m.streams[sessionID]
+	filtered := stream[:0]
+	for _, e := range stream {
+		if parseStreamSeq(e.ID) <= afterSeq {
+			filtered = append(filtered, e)
+		}
+	}
+	m.streams[sessionID] = filtered
 	return nil
 }
 
@@ -346,22 +555,50 @@ func (m *mockStorage) Close() error {
 
 // Snapshot methods
 func (m *mockStorage) SaveSnapshot(ctx context.Context, s *pb.Snapshot) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.snapshots[s.SessionId] = append([]*pb.Snapshot{s}, m.snapshots[s.SessionId]...)
 	return nil
 }
 
 func (m *mockStorage) GetSnapshot(ctx context.Context, sessionID, snapshotID string) (*pb.Snapshot, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, s := range m.snapshots[sessionID] {
+		if s != nil && s.Id == snapshotID {
+			return s, nil
+		}
+	}
 	return nil, nil
 }
 
 func (m *mockStorage) ListSnapshots(ctx context.Context, sessionID string) ([]*pb.Snapshot, error) {
-	return nil, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	snaps := m.snapshots[sessionID]
+	out := make([]*pb.Snapshot, len(snaps))
+	copy(out, snaps)
+	return out, nil
 }
 
 func (m *mockStorage) DeleteSnapshot(ctx context.Context, sessionID, snapshotID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	snaps := m.snapshots[sessionID]
+	filtered := make([]*pb.Snapshot, 0, len(snaps))
+	for _, s := range snaps {
+		if s == nil || s.Id != snapshotID {
+			filtered = append(filtered, s)
+		}
+	}
+	m.snapshots[sessionID] = filtered
 	return nil
 }
 
 func (m *mockStorage) DeleteAllSnapshots(ctx context.Context, sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.snapshots, sessionID)
 	return nil
 }
 
@@ -390,11 +627,16 @@ func (m *mockStorage) ClearOldPVCName(ctx context.Context, sessionID string) err
 }
 
 func (m *mockStorage) SetPVCName(ctx context.Context, sessionID, pvcName string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pvcNames[sessionID] = pvcName
 	return nil
 }
 
 func (m *mockStorage) GetPVCName(ctx context.Context, sessionID string) (string, error) {
-	return "", nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.pvcNames[sessionID], nil
 }
 
 // Helper to create a test manager with mock dependencies
@@ -420,6 +662,126 @@ func addSession(m *Manager, id string, status pb.SessionStatus, lastActiveAt tim
 		LastActiveAt: timestamppb.New(lastActiveAt),
 	}
 	m.sessions[id] = NewSessionState(session)
+}
+
+func TestCreateSandboxDirect_UsesStoredPVCWhenItExists(t *testing.T) {
+	manager, runtime, store := newTestManager(3)
+	sessionID := "sess-existing-pvc"
+	addSession(manager, sessionID, pb.SessionStatus_SESSION_STATUS_PAUSED, time.Now())
+
+	storedPVC := "agent-home-netclode-agent-pool-abc123"
+	if err := store.SetPVCName(context.Background(), sessionID, storedPVC); err != nil {
+		t.Fatalf("SetPVCName failed: %v", err)
+	}
+
+	runtime.mu.Lock()
+	runtime.pvcExists[storedPVC] = true
+	runtime.mu.Unlock()
+
+	manager.createSandboxDirect(context.Background(), sessionID, nil, nil, false, nil)
+
+	runtime.mu.Lock()
+	env := runtime.createSandboxEnv[sessionID]
+	runtime.mu.Unlock()
+
+	if got := env[k8s.ExistingPVCEnvKey]; got != storedPVC {
+		t.Fatalf("expected %s=%q, got %q", k8s.ExistingPVCEnvKey, storedPVC, got)
+	}
+}
+
+func TestCreateSandboxDirect_SkipsStoredPVCWhenMissingAndNoSnapshots(t *testing.T) {
+	manager, runtime, store := newTestManager(3)
+	sessionID := "sess-missing-pvc"
+	addSession(manager, sessionID, pb.SessionStatus_SESSION_STATUS_PAUSED, time.Now())
+
+	storedPVC := "agent-home-sess-does-not-exist"
+	if err := store.SetPVCName(context.Background(), sessionID, storedPVC); err != nil {
+		t.Fatalf("SetPVCName failed: %v", err)
+	}
+
+	runtime.mu.Lock()
+	runtime.pvcExists[storedPVC] = false
+	runtime.pvcExists["agent-home-sess-"+sessionID] = false
+	runtime.mu.Unlock()
+
+	manager.createSandboxDirect(context.Background(), sessionID, nil, nil, false, nil)
+
+	runtime.mu.Lock()
+	env := runtime.createSandboxEnv[sessionID]
+	runtime.mu.Unlock()
+
+	if _, ok := env[k8s.ExistingPVCEnvKey]; ok {
+		t.Fatalf("did not expect %s to be set when stored PVC is missing", k8s.ExistingPVCEnvKey)
+	}
+}
+
+func TestCreateSandboxDirect_UsesCanonicalPVCWhenStoredPVCMissing(t *testing.T) {
+	manager, runtime, store := newTestManager(3)
+	sessionID := "sess-missing-pvc-canonical-exists"
+	addSession(manager, sessionID, pb.SessionStatus_SESSION_STATUS_PAUSED, time.Now())
+
+	storedPVC := "agent-home-netclode-agent-pool-missing"
+	if err := store.SetPVCName(context.Background(), sessionID, storedPVC); err != nil {
+		t.Fatalf("SetPVCName failed: %v", err)
+	}
+
+	canonicalPVC := "agent-home-sess-" + sessionID
+	runtime.mu.Lock()
+	runtime.pvcExists[storedPVC] = false
+	runtime.pvcExists[canonicalPVC] = true
+	runtime.mu.Unlock()
+
+	manager.createSandboxDirect(context.Background(), sessionID, nil, nil, false, nil)
+
+	runtime.mu.Lock()
+	env := runtime.createSandboxEnv[sessionID]
+	restoreCalls := append([]string(nil), runtime.restoreSnapshot...)
+	runtime.mu.Unlock()
+
+	if got := env[k8s.ExistingPVCEnvKey]; got != canonicalPVC {
+		t.Fatalf("expected %s=%q, got %q", k8s.ExistingPVCEnvKey, canonicalPVC, got)
+	}
+
+	if len(restoreCalls) != 0 {
+		t.Fatalf("expected no snapshot restore calls when canonical PVC exists, got %v", restoreCalls)
+	}
+}
+
+func TestCreateSandboxDirect_RestoresLatestSnapshotWhenStoredPVCMissing(t *testing.T) {
+	manager, runtime, store := newTestManager(3)
+	sessionID := "sess-missing-pvc-with-snapshots"
+	addSession(manager, sessionID, pb.SessionStatus_SESSION_STATUS_PAUSED, time.Now())
+
+	storedPVC := "agent-home-sess-does-not-exist"
+	if err := store.SetPVCName(context.Background(), sessionID, storedPVC); err != nil {
+		t.Fatalf("SetPVCName failed: %v", err)
+	}
+
+	store.snapshots[sessionID] = []*pb.Snapshot{
+		{Id: "latest-snapshot", SessionId: sessionID},
+		{Id: "older-snapshot", SessionId: sessionID},
+	}
+
+	runtime.mu.Lock()
+	runtime.pvcExists[storedPVC] = false
+	runtime.pvcExists["agent-home-sess-"+sessionID] = false
+	runtime.mu.Unlock()
+
+	manager.createSandboxDirect(context.Background(), sessionID, nil, nil, false, nil)
+
+	runtime.mu.Lock()
+	env := runtime.createSandboxEnv[sessionID]
+	restoreCalls := append([]string(nil), runtime.restoreSnapshot...)
+	runtime.mu.Unlock()
+
+	expectedPVC := "agent-home-sess-" + sessionID
+	if got := env[k8s.ExistingPVCEnvKey]; got != expectedPVC {
+		t.Fatalf("expected %s=%q, got %q", k8s.ExistingPVCEnvKey, expectedPVC, got)
+	}
+
+	if len(restoreCalls) != 1 || restoreCalls[0] != "latest-snapshot" {
+		t.Fatalf("expected restore call with latest snapshot, got %v", restoreCalls)
+	}
 }
 
 func TestEnsureActiveSlot_NoActionWhenUnderLimit(t *testing.T) {
@@ -586,10 +948,20 @@ type mockWarmAgentConnection struct {
 	assignedConfig    *AgentSessionConfig
 	assignCalled      bool
 	assignError       error
+	executeCalled     bool
+	executeText       string
+	executeErr        error
+	codexAuthCalled   bool
+	codexAccessToken  string
+	codexIdToken      string
+	codexExpiresAt    *timestamppb.Timestamp
+	codexAuthErr      error
 }
 
 func (m *mockWarmAgentConnection) ExecutePrompt(text string) error {
-	return nil
+	m.executeCalled = true
+	m.executeText = text
+	return m.executeErr
 }
 
 func (m *mockWarmAgentConnection) Interrupt() error {
@@ -618,6 +990,14 @@ func (m *mockWarmAgentConnection) ResizeTerminal(cols, rows int) error {
 
 func (m *mockWarmAgentConnection) UpdateGitCredentials(token string, repoAccess pb.RepoAccess) error {
 	return nil
+}
+
+func (m *mockWarmAgentConnection) UpdateCodexAuth(accessToken, idToken string, expiresAt *timestamppb.Timestamp) error {
+	m.codexAuthCalled = true
+	m.codexAccessToken = accessToken
+	m.codexIdToken = idToken
+	m.codexExpiresAt = expiresAt
+	return m.codexAuthErr
 }
 
 func (m *mockWarmAgentConnection) AssignSession(sessionID string, config *AgentSessionConfig) error {
@@ -768,5 +1148,386 @@ func TestMultipleWarmAgents(t *testing.T) {
 	}
 	if manager.GetAgentConnection("sess-b") != conn2 {
 		t.Error("sess-b should be assigned to conn2")
+	}
+}
+
+func TestCreate_CodexOAuthRequiresGlobalCredential(t *testing.T) {
+	manager, _, store := newTestManager(3)
+	manager.config.UseWarmPool = false
+
+	sdkType := pb.SdkType_SDK_TYPE_CODEX
+	model := "gpt-5-codex:oauth:high"
+	_, err := manager.Create(context.Background(), "OAuth Session", nil, nil, &sdkType, &model, nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected Create to fail when global codex oauth is not configured")
+	}
+
+	now := time.Now().UTC()
+	expiresAt := now.Add(30 * time.Minute)
+	if err := store.SaveCodexOAuth(context.Background(), &storage.CodexOAuthSessionData{
+		AccessToken:  "access-token",
+		IdToken:      "id-token",
+		RefreshToken: "refresh-token",
+		ExpiresAt:    &expiresAt,
+		UpdatedAt:    now,
+	}); err != nil {
+		t.Fatalf("SaveCodexOAuth failed: %v", err)
+	}
+
+	sess, err := manager.Create(context.Background(), "OAuth Session", nil, nil, &sdkType, &model, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if sess == nil || sess.Id == "" {
+		t.Fatalf("unexpected session returned: %+v", sess)
+	}
+}
+
+func TestGetSessionConfig_CodexOAuthOmitsRefreshToken(t *testing.T) {
+	manager, _, store := newTestManager(3)
+	manager.config.OpenAIAPIKey = "should-not-be-sent-in-oauth-mode"
+	sessionID := "sess-oauth-config"
+	now := time.Now().UTC()
+	model := "gpt-5-codex:oauth:high"
+	sdkType := pb.SdkType_SDK_TYPE_CODEX
+
+	session := &pb.Session{
+		Id:           sessionID,
+		Name:         "OAuth Session",
+		Status:       pb.SessionStatus_SESSION_STATUS_READY,
+		CreatedAt:    timestamppb.New(now),
+		LastActiveAt: timestamppb.New(now),
+		SdkType:      &sdkType,
+		Model:        &model,
+	}
+	manager.sessions[sessionID] = NewSessionState(session)
+	if err := store.SaveSession(context.Background(), session); err != nil {
+		t.Fatalf("SaveSession failed: %v", err)
+	}
+	expiresAt := now.Add(20 * time.Minute)
+	if err := store.SaveCodexOAuth(context.Background(), &storage.CodexOAuthSessionData{
+		AccessToken:  "oauth-access",
+		IdToken:      "oauth-id",
+		RefreshToken: "oauth-refresh",
+		ExpiresAt:    &expiresAt,
+		UpdatedAt:    now,
+	}); err != nil {
+		t.Fatalf("SaveCodexOAuth failed: %v", err)
+	}
+
+	cfg, err := manager.GetSessionConfig(context.Background(), sessionID)
+	if err != nil {
+		t.Fatalf("GetSessionConfig failed: %v", err)
+	}
+	if cfg.CodexAccessToken != "oauth-access" || cfg.CodexIdToken != "oauth-id" {
+		t.Fatalf("unexpected codex oauth tokens in config: %+v", cfg)
+	}
+	if cfg.OpenAIAPIKey != "" {
+		t.Fatalf("expected OpenAI API key to be omitted in oauth mode, got %q", cfg.OpenAIAPIKey)
+	}
+}
+
+func TestGetSessionConfig_CodexModelMissingAuthSuffixFails(t *testing.T) {
+	manager, _, store := newTestManager(3)
+	sessionID := "sess-codex-no-auth-suffix"
+	now := time.Now().UTC()
+	model := "gpt-5-codex"
+	sdkType := pb.SdkType_SDK_TYPE_CODEX
+
+	session := &pb.Session{
+		Id:           sessionID,
+		Name:         "Codex Session",
+		Status:       pb.SessionStatus_SESSION_STATUS_READY,
+		CreatedAt:    timestamppb.New(now),
+		LastActiveAt: timestamppb.New(now),
+		SdkType:      &sdkType,
+		Model:        &model,
+	}
+	manager.sessions[sessionID] = NewSessionState(session)
+	if err := store.SaveSession(context.Background(), session); err != nil {
+		t.Fatalf("SaveSession failed: %v", err)
+	}
+
+	_, err := manager.GetSessionConfig(context.Background(), sessionID)
+	if err == nil {
+		t.Fatal("expected GetSessionConfig to fail for codex model without auth suffix")
+	}
+	if !strings.Contains(err.Error(), "missing auth suffix") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSendPrompt_CodexOAuthRefreshesAndPushesUpdatedTokens(t *testing.T) {
+	manager, _, store := newTestManager(3)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"new-access","id_token":"new-id","refresh_token":"new-refresh","expires_in":3600}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("CODEX_REFRESH_TOKEN_URL_OVERRIDE", server.URL)
+
+	// Ensure mock storage can persist oauth data with keyless mock implementation.
+	manager.config.CodexOAuthEncryptionKey = []byte("0123456789abcdef0123456789abcdef")
+
+	sessionID := "sess-sendprompt-oauth"
+	now := time.Now().UTC()
+	sdkType := pb.SdkType_SDK_TYPE_CODEX
+	model := "gpt-5-codex:oauth:high"
+	session := &pb.Session{
+		Id:           sessionID,
+		Name:         "OAuth Prompt",
+		Status:       pb.SessionStatus_SESSION_STATUS_READY,
+		CreatedAt:    timestamppb.New(now),
+		LastActiveAt: timestamppb.New(now),
+		SdkType:      &sdkType,
+		Model:        &model,
+	}
+	state := NewSessionState(session)
+	manager.sessions[sessionID] = state
+	_ = store.SaveSession(context.Background(), session)
+
+	expiredAt := now.Add(1 * time.Minute)
+	_ = store.SaveCodexOAuth(context.Background(), &storage.CodexOAuthSessionData{
+		AccessToken:  "old-access",
+		IdToken:      "old-id",
+		RefreshToken: "old-refresh",
+		ExpiresAt:    &expiredAt,
+		UpdatedAt:    now,
+	})
+
+	conn := &mockWarmAgentConnection{}
+	manager.RegisterAgentConnection(sessionID, conn)
+	defer manager.UnregisterAgentConnection(sessionID)
+
+	if err := manager.SendPrompt(context.Background(), sessionID, "hello"); err != nil {
+		t.Fatalf("SendPrompt failed: %v", err)
+	}
+
+	if !conn.codexAuthCalled {
+		t.Fatal("expected UpdateCodexAuth to be called")
+	}
+	if conn.codexAccessToken != "new-access" || conn.codexIdToken != "new-id" {
+		t.Fatalf("unexpected updated codex tokens: access=%q id=%q", conn.codexAccessToken, conn.codexIdToken)
+	}
+
+	updated, err := store.GetCodexOAuth(context.Background())
+	if err != nil {
+		t.Fatalf("GetCodexOAuth failed: %v", err)
+	}
+	if updated == nil || updated.RefreshToken != "new-refresh" {
+		b, _ := json.Marshal(updated)
+		t.Fatalf("expected refreshed oauth data in storage, got %s", b)
+	}
+	if !conn.executeCalled {
+		t.Fatal("expected ExecutePrompt to be called")
+	}
+}
+
+func TestStartCodexAuth_RequiresEncryptionKey(t *testing.T) {
+	manager, _, _ := newTestManager(3)
+	manager.config.CodexOAuthEncryptionKey = nil
+
+	_, err := manager.StartCodexAuth(context.Background())
+	if err == nil {
+		t.Fatal("expected StartCodexAuth to fail without encryption key")
+	}
+	if !strings.Contains(err.Error(), "CODEX_OAUTH_ENCRYPTION_KEY_B64") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGetAllowedSecretForHost_CodexHasNoProxySecret(t *testing.T) {
+	manager, _, _ := newTestManager(3)
+
+	secretKey, placeholder := manager.getAllowedSecretForHost(pb.SdkType_SDK_TYPE_CODEX, "api.openai.com")
+	if secretKey != "" || placeholder != "" {
+		t.Fatalf("expected no proxy secret mapping for codex, got secretKey=%q placeholder=%q", secretKey, placeholder)
+	}
+}
+
+func TestHandleAgentResponse_SystemInterruptedSetsReady(t *testing.T) {
+	manager, _, _ := newTestManager(3)
+	now := time.Now().UTC()
+	addSession(manager, "sess-interrupt", pb.SessionStatus_SESSION_STATUS_RUNNING, now)
+
+	state := manager.sessions["sess-interrupt"]
+	state.CurrentMessageID = "msg_123"
+	state.ContentBuilder.WriteString("partial content")
+	state.OriginalPrompt = "long running prompt"
+
+	err := manager.HandleAgentResponse(context.Background(), "sess-interrupt", &pb.AgentStreamResponse{
+		Response: &pb.AgentStreamResponse_SystemMessage{
+			SystemMessage: &pb.AgentSystemMessage{Message: "interrupted"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("HandleAgentResponse failed: %v", err)
+	}
+
+	if got := manager.sessions["sess-interrupt"].Session.Status; got != pb.SessionStatus_SESSION_STATUS_READY {
+		t.Fatalf("expected status READY after interrupt, got %s", got)
+	}
+	if got := state.CurrentMessageID; got != "" {
+		t.Fatalf("expected CurrentMessageID to be reset, got %q", got)
+	}
+	if got := state.ContentBuilder.String(); got != "" {
+		t.Fatalf("expected ContentBuilder to be reset, got %q", got)
+	}
+	if got := state.OriginalPrompt; got != "" {
+		t.Fatalf("expected OriginalPrompt to be reset, got %q", got)
+	}
+}
+
+func TestHandleAgentResponse_SystemMessageNonInterruptNoStatusChange(t *testing.T) {
+	manager, _, _ := newTestManager(3)
+	now := time.Now().UTC()
+	addSession(manager, "sess-system", pb.SessionStatus_SESSION_STATUS_RUNNING, now)
+
+	err := manager.HandleAgentResponse(context.Background(), "sess-system", &pb.AgentStreamResponse{
+		Response: &pb.AgentStreamResponse_SystemMessage{
+			SystemMessage: &pb.AgentSystemMessage{Message: "ready"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("HandleAgentResponse failed: %v", err)
+	}
+
+	if got := manager.sessions["sess-system"].Session.Status; got != pb.SessionStatus_SESSION_STATUS_RUNNING {
+		t.Fatalf("expected status to stay RUNNING for non-interrupt system message, got %s", got)
+	}
+}
+
+func TestExposePort_UsesResolvedPreviewHostname(t *testing.T) {
+	manager, runtime, _ := newTestManager(3)
+	runtime.previewHostname = "sandbox-test123.dolly-grouse.ts.net"
+
+	previewURL, err := manager.ExposePort(context.Background(), "test123", 1234)
+	if err != nil {
+		t.Fatalf("ExposePort failed: %v", err)
+	}
+
+	expected := "http://sandbox-test123.dolly-grouse.ts.net:1234"
+	if previewURL != expected {
+		t.Fatalf("expected preview URL %q, got %q", expected, previewURL)
+	}
+}
+
+func TestExposePort_FallsBackToShortHostnameOnLookupError(t *testing.T) {
+	manager, runtime, _ := newTestManager(3)
+	runtime.previewHostErr = errors.New("lookup failed")
+
+	previewURL, err := manager.ExposePort(context.Background(), "test123", 1234)
+	if err != nil {
+		t.Fatalf("ExposePort failed: %v", err)
+	}
+
+	expected := "http://sandbox-test123:1234"
+	if previewURL != expected {
+		t.Fatalf("expected preview URL %q, got %q", expected, previewURL)
+	}
+}
+
+func TestUnexposePort_RemovesPortAndPersistsEvent(t *testing.T) {
+	manager, runtime, _ := newTestManager(3)
+
+	if _, err := manager.ExposePort(context.Background(), "test123", 1234); err != nil {
+		t.Fatalf("ExposePort failed: %v", err)
+	}
+	if err := manager.UnexposePort(context.Background(), "test123", 1234); err != nil {
+		t.Fatalf("UnexposePort failed: %v", err)
+	}
+
+	runtime.mu.Lock()
+	_, stillExposed := runtime.exposedPorts["test123"][1234]
+	runtime.mu.Unlock()
+	if stillExposed {
+		t.Fatalf("expected port 1234 to be removed from runtime state")
+	}
+
+	entries, err := manager.storage.GetStreamEntriesByTypes(context.Background(), "test123", "0", 0, []string{storage.StreamEntryTypeEvent})
+	if err != nil {
+		t.Fatalf("GetStreamEntriesByTypes failed: %v", err)
+	}
+
+	foundUnexposed := false
+	for _, e := range entries {
+		var event pb.AgentEvent
+		if err := protojson.Unmarshal(e.Entry.Payload, &event); err != nil {
+			continue
+		}
+		if event.Kind == pb.AgentEventKind_AGENT_EVENT_KIND_PORT_UNEXPOSED {
+			if payload := event.GetPortUnexposed(); payload != nil && payload.Port == 1234 {
+				foundUnexposed = true
+				break
+			}
+		}
+	}
+
+	if !foundUnexposed {
+		t.Fatalf("expected persisted port_unexposed event for port 1234")
+	}
+}
+
+func TestUnexposePort_NotFoundStillPersistsEvent(t *testing.T) {
+	manager, runtime, _ := newTestManager(3)
+	runtime.unexposePortErr = k8serrors.NewNotFound(schema.GroupResource{Resource: "services"}, "ts-test123")
+
+	if err := manager.UnexposePort(context.Background(), "test123", 1234); err != nil {
+		t.Fatalf("UnexposePort failed: %v", err)
+	}
+
+	entries, err := manager.storage.GetStreamEntriesByTypes(context.Background(), "test123", "0", 0, []string{storage.StreamEntryTypeEvent})
+	if err != nil {
+		t.Fatalf("GetStreamEntriesByTypes failed: %v", err)
+	}
+
+	foundUnexposed := false
+	for _, e := range entries {
+		var event pb.AgentEvent
+		if err := protojson.Unmarshal(e.Entry.Payload, &event); err != nil {
+			continue
+		}
+		if event.Kind == pb.AgentEventKind_AGENT_EVENT_KIND_PORT_UNEXPOSED {
+			if payload := event.GetPortUnexposed(); payload != nil && payload.Port == 1234 {
+				foundUnexposed = true
+				break
+			}
+		}
+	}
+
+	if !foundUnexposed {
+		t.Fatalf("expected persisted port_unexposed event for port 1234")
+	}
+}
+
+func TestRestoreExposedPorts_AppliesLatestExposeState(t *testing.T) {
+	manager, runtime, _ := newTestManager(3)
+
+	if _, err := manager.ExposePort(context.Background(), "test123", 1234); err != nil {
+		t.Fatalf("ExposePort(1234) failed: %v", err)
+	}
+	if _, err := manager.ExposePort(context.Background(), "test123", 5678); err != nil {
+		t.Fatalf("ExposePort(5678) failed: %v", err)
+	}
+	if err := manager.UnexposePort(context.Background(), "test123", 1234); err != nil {
+		t.Fatalf("UnexposePort(1234) failed: %v", err)
+	}
+
+	// Simulate fresh runtime state before resume restoration.
+	runtime.mu.Lock()
+	runtime.exposedPorts["test123"] = make(map[int]bool)
+	runtime.mu.Unlock()
+
+	manager.restoreExposedPorts(context.Background(), "test123")
+
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if !runtime.exposedPorts["test123"][5678] {
+		t.Fatalf("expected port 5678 to be restored")
+	}
+	if runtime.exposedPorts["test123"][1234] {
+		t.Fatalf("expected port 1234 to remain unexposed after restoration")
 	}
 }

@@ -235,6 +235,11 @@ func getEventDetails(e *pb.AgentEvent) string {
 			return fmt.Sprintf("port=%d%s", port.Port, url)
 		}
 
+	case pb.AgentEventKind_AGENT_EVENT_KIND_PORT_UNEXPOSED:
+		if port := e.GetPortUnexposed(); port != nil {
+			return fmt.Sprintf("port=%d removed", port.Port)
+		}
+
 	case pb.AgentEventKind_AGENT_EVENT_KIND_REPO_CLONE:
 		if repo := e.GetRepoClone(); repo != nil {
 			stage := repo.Stage.String()

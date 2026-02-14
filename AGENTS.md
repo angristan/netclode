@@ -5,6 +5,7 @@
 - Always ask before running `git push`
 - Prefer breaking changes over backwards compatibility (no `reserved` fields in protos, etc.)
 - **Never make manual changes to servers** - always use Ansible. If debugging requires manual changes, backport them to Ansible immediately.
+- When making changes in any `clients/*` project, read that client's local `README.md` first (for example, `clients/ios/README.md` or `clients/cli/README.md`).
 
 ## Deployment
 

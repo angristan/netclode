@@ -67,7 +67,6 @@ func (c *Client) CreateSession(ctx context.Context, opts CreateSessionOptions) (
 			MemoryMb: opts.MemoryMB,
 		}
 	}
-
 	if err := stream.Send(&pb.ClientMessage{
 		Message: &pb.ClientMessage_CreateSession{
 			CreateSession: req,
@@ -408,6 +407,81 @@ func (c *Client) ListModels(ctx context.Context, sdkType pb.SdkType, copilotBack
 	}
 
 	return nil, fmt.Errorf("unexpected response type: %T", msg.GetMessage())
+}
+
+func (c *Client) CodexAuthStart(ctx context.Context) (*pb.CodexAuthStartedResponse, error) {
+	stream := c.client.Connect(ctx)
+	defer func() { _ = stream.CloseRequest() }()
+
+	if err := stream.Send(&pb.ClientMessage{
+		Message: &pb.ClientMessage_CodexAuthStart{
+			CodexAuthStart: &pb.CodexAuthStartRequest{},
+		},
+	}); err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+
+	msg, err := stream.Receive()
+	if err != nil {
+		return nil, fmt.Errorf("receive response: %w", err)
+	}
+	if resp := msg.GetCodexAuthStarted(); resp != nil {
+		return resp, nil
+	}
+	if errResp := msg.GetError(); errResp != nil {
+		return nil, fmt.Errorf("%s: %s", errResp.Error.Code, errResp.Error.Message)
+	}
+	return nil, fmt.Errorf("unexpected response type: %T", msg.GetMessage())
+}
+
+func (c *Client) CodexAuthStatus(ctx context.Context) (*pb.CodexAuthStatusResponse, error) {
+	stream := c.client.Connect(ctx)
+	defer func() { _ = stream.CloseRequest() }()
+
+	if err := stream.Send(&pb.ClientMessage{
+		Message: &pb.ClientMessage_CodexAuthStatus{
+			CodexAuthStatus: &pb.CodexAuthStatusRequest{},
+		},
+	}); err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+
+	msg, err := stream.Receive()
+	if err != nil {
+		return nil, fmt.Errorf("receive response: %w", err)
+	}
+	if resp := msg.GetCodexAuthStatus(); resp != nil {
+		return resp, nil
+	}
+	if errResp := msg.GetError(); errResp != nil {
+		return nil, fmt.Errorf("%s: %s", errResp.Error.Code, errResp.Error.Message)
+	}
+	return nil, fmt.Errorf("unexpected response type: %T", msg.GetMessage())
+}
+
+func (c *Client) CodexAuthLogout(ctx context.Context) error {
+	stream := c.client.Connect(ctx)
+	defer func() { _ = stream.CloseRequest() }()
+
+	if err := stream.Send(&pb.ClientMessage{
+		Message: &pb.ClientMessage_CodexAuthLogout{
+			CodexAuthLogout: &pb.CodexAuthLogoutRequest{},
+		},
+	}); err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+
+	msg, err := stream.Receive()
+	if err != nil {
+		return fmt.Errorf("receive response: %w", err)
+	}
+	if msg.GetCodexAuthLoggedOut() != nil {
+		return nil
+	}
+	if errResp := msg.GetError(); errResp != nil {
+		return fmt.Errorf("%s: %s", errResp.Error.Code, errResp.Error.Message)
+	}
+	return fmt.Errorf("unexpected response type: %T", msg.GetMessage())
 }
 
 // RestoreSnapshot restores a session to a snapshot.

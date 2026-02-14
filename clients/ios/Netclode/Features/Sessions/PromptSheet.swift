@@ -12,10 +12,10 @@ struct PromptSheet: View {
     @State private var selectedRepos: [String] = []
     @State private var repoAccess: RepoAccess = .read
     @State private var selectedSdkType: SdkType = .claude
-    @State private var selectedClaudeModelId: String = UnifiedModelsStore.defaultClaudeModelId
-    @State private var selectedOpenCodeModelId: String = UnifiedModelsStore.defaultOpenCodeModelId
-    @State private var selectedCopilotModelId: String = UnifiedModelsStore.defaultCopilotModelId
-    @State private var selectedCodexModelId: String = UnifiedModelsStore.defaultCodexModelId
+    @State private var selectedClaudeModelId = ""
+    @State private var selectedOpenCodeModelId = ""
+    @State private var selectedCopilotModelId = ""
+    @State private var selectedCodexModelId = ""
     @State private var isSubmitting = false
     @State private var canSubmit = false
     @State private var showModelDropdown = false
@@ -473,6 +473,7 @@ struct PromptSheet: View {
             }
             .onAppear {
                 isFocused = true
+                initializePreferredModels()
                 // Initialize resource defaults from server (if already loaded)
                 if let limits = modelsStore.resourceLimits {
                     vcpus = limits.defaultVcpus
@@ -486,6 +487,8 @@ struct PromptSheet: View {
                 withAnimation(.smooth(duration: 0.2)) {
                     showModelDropdown = false
                 }
+
+                reconcileSelectedModel(for: selectedSdkType)
             }
             .onChange(of: showModelDropdown) { _, isExpanded in
                 // Dismiss keyboard when opening model dropdown
@@ -511,6 +514,18 @@ struct PromptSheet: View {
                     vcpus = limits.defaultVcpus
                     memoryMB = limits.defaultMemoryMB
                 }
+            }
+            .onChange(of: modelsStore.models(for: .claude).map(\.id)) { _, _ in
+                reconcileSelectedModel(for: .claude)
+            }
+            .onChange(of: modelsStore.models(for: .opencode).map(\.id)) { _, _ in
+                reconcileSelectedModel(for: .opencode)
+            }
+            .onChange(of: modelsStore.models(for: .copilot).map(\.id)) { _, _ in
+                reconcileSelectedModel(for: .copilot)
+            }
+            .onChange(of: modelsStore.models(for: .codex).map(\.id)) { _, _ in
+                reconcileSelectedModel(for: .codex)
             }
         }
         .presentationDetents([.medium, .large])
@@ -545,11 +560,88 @@ struct PromptSheet: View {
         return "\(mb) MB"
     }
 
+    private func initializePreferredModels() {
+        setSelectedModelId(
+            modelsStore.preferredModelId(
+                for: .claude,
+                lastUsedModelId: settingsStore.lastUsedModelId(for: .claude)
+            ),
+            for: .claude
+        )
+        setSelectedModelId(
+            modelsStore.preferredModelId(
+                for: .opencode,
+                lastUsedModelId: settingsStore.lastUsedModelId(for: .opencode)
+            ),
+            for: .opencode
+        )
+        setSelectedModelId(
+            modelsStore.preferredModelId(
+                for: .copilot,
+                lastUsedModelId: settingsStore.lastUsedModelId(for: .copilot)
+            ),
+            for: .copilot
+        )
+        setSelectedModelId(
+            modelsStore.preferredModelId(
+                for: .codex,
+                lastUsedModelId: settingsStore.lastUsedModelId(for: .codex)
+            ),
+            for: .codex
+        )
+    }
+
+    private func currentSelectedModelId(for sdkType: SdkType) -> String {
+        switch sdkType {
+        case .claude:
+            return selectedClaudeModelId
+        case .opencode:
+            return selectedOpenCodeModelId
+        case .copilot:
+            return selectedCopilotModelId
+        case .codex:
+            return selectedCodexModelId
+        }
+    }
+
+    private func setSelectedModelId(_ modelId: String, for sdkType: SdkType) {
+        switch sdkType {
+        case .claude:
+            selectedClaudeModelId = modelId
+        case .opencode:
+            selectedOpenCodeModelId = modelId
+        case .copilot:
+            selectedCopilotModelId = modelId
+        case .codex:
+            selectedCodexModelId = modelId
+        }
+    }
+
+    private func reconcileSelectedModel(for sdkType: SdkType) {
+        let current = currentSelectedModelId(for: sdkType)
+        let models = modelsStore.models(for: sdkType)
+        let hasPersistedLastUsed = settingsStore.lastUsedModelId(for: sdkType) != nil
+        let isCurrentValid = !current.isEmpty && models.contains(where: { $0.id == current })
+        if hasPersistedLastUsed && isCurrentValid {
+            return
+        }
+
+        let preferred = modelsStore.preferredModelId(
+            for: sdkType,
+            lastUsedModelId: settingsStore.lastUsedModelId(for: sdkType)
+        )
+        if preferred == current {
+            return
+        }
+        setSelectedModelId(preferred, for: sdkType)
+    }
+
     private func submitPrompt() {
         let text = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
         isSubmitting = true
+        sessionStore.clearPendingCreationError()
 
         if settingsStore.hapticFeedbackEnabled {
             HapticFeedback.medium()
@@ -577,6 +669,10 @@ struct PromptSheet: View {
             modelParam = selectedCopilotModelId
         case .codex:
             modelParam = selectedCodexModelId
+        }
+
+        if let modelParam {
+            settingsStore.setLastUsedModelId(modelParam, for: selectedSdkType)
         }
 
         // Build network config (only if tailnet access is requested)

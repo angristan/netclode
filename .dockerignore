@@ -19,9 +19,14 @@ dist
 
 # Infra (not needed in build)
 infra/
+docs/
+proto/
 
 # Apps not needed in builds
-clients/ios/
+clients/
+
+# Services not needed for root-context agent build
+services/control-plane/
 
 # Scripts
 scripts/

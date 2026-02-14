@@ -42,6 +42,8 @@ type Runtime interface {
 	DeleteSandboxService(ctx context.Context, sessionID string) error
 	ListTailscaleServices(ctx context.Context) ([]string, error) // Returns session IDs with ts-* services
 	ExposePort(ctx context.Context, sessionID string, port int) error
+	UnexposePort(ctx context.Context, sessionID string, port int) error
+	GetSandboxPreviewHostname(ctx context.Context, sessionID string) (string, error)
 
 	// Network policy operations
 	ConfigureNetwork(ctx context.Context, sessionID string, networkEnabled bool) error
@@ -57,6 +59,7 @@ type Runtime interface {
 	CreatePVCFromSnapshot(ctx context.Context, sessionID, snapshotID string) (pvcName string, err error)
 	WaitForRestoreJob(ctx context.Context, sessionID, snapshotID string, timeout time.Duration) error
 	GetPVCName(ctx context.Context, sessionID string) (string, error)
+	PVCExists(ctx context.Context, pvcName string) (bool, error)
 
 	// Agent authentication
 	// VerifyAgentToken validates a Kubernetes ServiceAccount token and returns the pod name.

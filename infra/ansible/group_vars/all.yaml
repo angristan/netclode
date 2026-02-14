@@ -85,6 +85,13 @@ tailscale_port: 41641
 # Set NVIDIA_ENABLED=true in .env to install NVIDIA drivers and container toolkit
 nvidia_enabled: "{{ lookup('env', 'NVIDIA_ENABLED') | default('false', true) | lower == 'true' }}"
 
+# MinIO object storage (optional)
+# Set MINIO_ENABLED=true to install MinIO on the host.
+minio_enabled: "{{ lookup('env', 'MINIO_ENABLED') | default('false', true) | lower == 'true' }}"
+minio_bucket_name: "{{ lookup('env', 'MINIO_BUCKET_NAME') | default('netclode-juicefs', true) }}"
+minio_api_port: "{{ lookup('env', 'MINIO_API_PORT') | default('9000', true) }}"
+minio_console_port: "{{ lookup('env', 'MINIO_CONSOLE_PORT') | default('9001', true) }}"
+
 # Ollama local inference (optional)
 # Set OLLAMA_ENABLED=true in .env to deploy Ollama with GPU support
 ollama_enabled: "{{ lookup('env', 'OLLAMA_ENABLED') | default('false', true) | lower == 'true' }}"

@@ -1,0 +1,14 @@
+---
+# Install Docker + Buildx on target host for fast dev image builds.
+#
+# Usage:
+#   DEPLOY_HOST=<host> ansible-playbook playbooks/dev-builder.yaml -e ansible_user=ubuntu
+
+- name: Install dev build tooling on target host
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - role: dev-builder
+      tags: [dev-builder, docker, dev-tools]

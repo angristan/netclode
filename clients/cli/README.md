@@ -89,8 +89,8 @@ netclode sessions create --repo owner/repo --repo owner/other --name "Multi Repo
 # With SDK type (claude, opencode, copilot, codex)
 netclode sessions create --repo owner/repo --sdk opencode --model anthropic/claude-sonnet-4-0
 
-# With Codex SDK
-netclode sessions create --repo owner/repo --sdk codex --model codex-mini-latest
+# With Codex SDK (auth suffix required: :oauth or :api)
+netclode sessions create --repo owner/repo --sdk codex --model gpt-5-codex:oauth:high
 
 # With Tailnet access
 netclode sessions create --repo owner/repo --tailnet  # Allow Tailnet access (100.64.0.0/10)
@@ -270,7 +270,7 @@ netclode auth codex
 This will:
 1. Display a verification URL and code
 2. Wait for you to authorize in your browser
-3. Output tokens to add to your `.env` file
+3. Store OAuth tokens locally for CLI Codex `:oauth` sessions
 
 Example output:
 ```
@@ -281,13 +281,19 @@ Waiting for authorization...
 
 Authentication successful!
 
-Add these to your .env file:
------------------------------
-CODEX_ACCESS_TOKEN=eyJ...
-CODEX_REFRESH_TOKEN=...
-CODEX_ID_TOKEN=eyJ...
+Stored local Codex OAuth tokens for CLI session creation.
+```
 
-Then deploy with: cd infra/ansible && DEPLOY_HOST=<host> ansible-playbook playbooks/site.yaml
+Check current auth status:
+
+```bash
+netclode auth codex status
+```
+
+Remove local OAuth tokens:
+
+```bash
+netclode auth codex logout
 ```
 
 ## Global Flags
@@ -352,7 +358,8 @@ clients/cli/
     │   ├── client.go         # Connect protocol client
     │   └── client_test.go    # Client tests
     ├── codex/
-    │   └── oauth.go          # Codex OAuth device code flow
+    │   ├── oauth.go          # Codex OAuth device code flow
+    │   └── store.go          # Local Codex OAuth token storage/refresh
     └── output/
         ├── format.go         # Output formatting
         └── format_test.go    # Formatting tests

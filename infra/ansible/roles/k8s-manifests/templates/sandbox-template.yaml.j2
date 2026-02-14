@@ -1,0 +1,239 @@
+# SandboxTemplate for Netclode Agent
+#
+# Security note on privileged: true
+# ---------------------------------
+# The agent runs with privileged: true because the image runs Docker-in-Docker
+# which needs to mount /proc, /dev, /sys, etc.
+#
+# This is SAFE because:
+# 1. Kata Containers runs the pod inside an isolated VM with its own kernel
+# 2. "privileged" only grants root inside the VM, not on the host
+# 3. containerd config has privileged_without_host_devices=true, so no host
+#    devices (/dev/kvm, /dev/sda, etc.) are passed through
+# 4. The VM boundary is the security layer, not container namespaces
+#
+# Secret Proxy Architecture
+# -------------------------
+# Two-tier proxy architecture for secure API key injection:
+#
+#   SDK → auth-proxy (localhost:8080) → secret-proxy (external) → internet
+#         adds SA token                  injects secrets
+#         NO secrets                     HAS secrets
+#         inside microVM                 outside microVM
+#
+# 1. Agent sees placeholder values (e.g., ANTHROPIC_API_KEY=NETCLODE_PLACEHOLDER_xxx)
+# 2. HTTP_PROXY points to local auth-proxy (localhost:8080), which runs inside the sandbox
+# 3. auth-proxy reads the mounted K8s ServiceAccount token and adds Proxy-Authorization header
+# 4. auth-proxy forwards to external secret-proxy service
+# 5. secret-proxy validates token with control-plane (checks session allowlist by SDK type)
+# 6. secret-proxy replaces placeholders with real secrets ONLY for allowed hosts
+#
+# Security:
+# - Real secrets NEVER enter the sandbox microVM
+# - Per-session authorization (Claude session can't use Mistral API)
+# - Token-based auth, not IP-based (cryptographic identity)
+# - Control-plane is the single source of truth for permissions
+#
+# (Inspired by Fly's Tokenizer: https://github.com/superfly/tokenizer)
+#
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxTemplate
+metadata:
+  name: netclode-agent
+  namespace: netclode
+spec:
+  podTemplate:
+    spec:
+      runtimeClassName: kata-clh
+{% if image_pull_secret_name | length > 0 %}
+      imagePullSecrets:
+        - name: {{ image_pull_secret_name }}
+{% endif %}
+      initContainers:
+        # Fix MTU for Cilium + Kata compatibility
+        # Kata VMs don't inherit route MTU from outer namespace, causing fragmentation
+        # See: https://docs.cilium.io/en/stable/network/kubernetes/kata.html#limitations
+        - name: fix-mtu
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - |
+              # Extract gateway and interface from default route
+              GW=$(ip route | grep "^default" | awk '{print $3}')
+              DEV=$(ip route | grep "^default" | awk '{print $5}')
+              if [ -n "$GW" ] && [ -n "$DEV" ]; then
+                ip route change default via "$GW" dev "$DEV" mtu 1450 || true
+              fi
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+      containers:
+        - name: agent
+          image: {{ agent_image }}
+          imagePullPolicy: Always
+          securityContext:
+            privileged: true  # See security note above
+          env:
+            - name: NODE_ENV
+              value: "production"
+            # Proxy settings - local auth-proxy adds SA token, forwards to external secret-proxy
+            # SDK → localhost:8080 (auth-proxy) → secret-proxy.svc:8080 → internet
+            - name: HTTP_PROXY
+              value: "http://127.0.0.1:8080"
+            - name: HTTPS_PROXY
+              value: "http://127.0.0.1:8080"
+            - name: NO_PROXY
+              value: "localhost,127.0.0.1,control-plane.netclode.svc.cluster.local"
+            # External secret-proxy URL (auth-proxy forwards to this)
+            - name: SECRET_PROXY_URL
+              value: "http://secret-proxy.netclode.svc.cluster.local:8080"
+            # Agent sees PLACEHOLDERS for API keys (real secrets injected by external proxy)
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: netclode-secrets
+                  key: anthropic-api-key-placeholder
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: netclode-secrets
+                  key: openai-api-key-placeholder
+                  optional: true
+            - name: MISTRAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: netclode-secrets
+                  key: mistral-api-key-placeholder
+                  optional: true
+            - name: OPENCODE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: netclode-secrets
+                  key: opencode-api-key-placeholder
+                  optional: true
+            - name: ZAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: netclode-secrets
+                  key: zai-api-key-placeholder
+                  optional: true
+            - name: GITHUB_COPILOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: netclode-secrets
+                  key: github-copilot-token-placeholder
+                  optional: true
+            # GITHUB_TOKEN is NOT proxied - used for git credential helper (clone/push)
+            # Git embeds credentials in URL, doesn't use HTTP Authorization headers
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: netclode-secrets
+                  key: github-token
+                  optional: true
+            - name: CONTROL_PLANE_URL
+              value: "http://control-plane.netclode.svc.cluster.local"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: agent-home
+              mountPath: /agent
+            # Mount proxy CA so agent trusts MITM certificates from external proxy
+            - name: proxy-ca
+              mountPath: /usr/local/share/ca-certificates/secret-proxy.crt
+              subPath: ca.crt
+              readOnly: true
+            # Mount ServiceAccount token for proxy authentication
+            - name: proxy-auth-token
+              mountPath: /var/run/secrets/proxy-auth
+              readOnly: true
+          # Agent connects TO control-plane, no ports exposed
+          # Readiness: check for ready file created by agent
+          readinessProbe:
+            exec:
+              command: ["test", "-f", "/tmp/agent-ready"]
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["test", "-f", "/tmp/agent-ready"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        # ConfigMap containing proxy CA certificate (for HTTPS MITM trust)
+        - name: proxy-ca
+          configMap:
+            name: secret-proxy-ca
+        # Projected ServiceAccount token for proxy authentication
+        - name: proxy-auth-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+                  audience: secret-proxy
+  volumeClaimTemplates:
+    - metadata:
+        name: agent-home
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: juicefs-sc
+        resources:
+          requests:
+            storage: 10Gi
+  networkPolicy:
+    # Ingress: Allow Tailscale proxy for preview URLs (agent web servers)
+    ingress:
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: tailscale
+        ports:
+          - protocol: TCP
+            port: 3002
+          - protocol: TCP
+            port: 8080
+    egress:
+      # Allow connection to control-plane (port 80 -> 3000)
+      - to:
+          - podSelector:
+              matchLabels:
+                app: control-plane
+        ports:
+          - protocol: TCP
+            port: 80
+          - protocol: TCP
+            port: 3000
+      # Allow connection to secret-proxy (for API key injection)
+      - to:
+          - podSelector:
+              matchLabels:
+                app: secret-proxy
+        ports:
+          - protocol: TCP
+            port: 8080
+      # Allow DNS
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: kube-system
+        ports:
+          - protocol: TCP
+            port: 53
+          - protocol: UDP
+            port: 53
+      # Allow connection to Ollama for local GPU inference (if deployed)
+      - to:
+          - podSelector:
+              matchLabels:
+                app: ollama
+        ports:
+          - protocol: TCP
+            port: 11434
+      # NOTE: Internet access (0.0.0.0/0) is enabled by default via per-session
+      # NetworkPolicy added by control-plane (public internet; private ranges blocked).
+      # See docs/network-access.md.

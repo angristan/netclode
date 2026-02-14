@@ -5,9 +5,13 @@ Here's how to get Netclode running on your own server.
 ## Prerequisites
 
 - Linux machine with nested virtualization (2 vCPU, 8GB RAM minimum)
-- S3-compatible storage (DigitalOcean Spaces, Cloudflare R2, etc.)
+- S3-compatible storage backend:
+  - External provider (DigitalOcean Spaces, Cloudflare R2, etc.), or
+  - Self-hosted MinIO on the same server (optional, can be auto-configured)
 - Tailscale account
-- At least one LLM API key (Anthropic, OpenAI, Mistral, etc.) - see [SDK Support](sdk-support.md)
+- LLM credentials:
+  - At least one API key (Anthropic, OpenAI, Mistral, etc.) for non-Codex providers, or
+  - Local CLI Codex OAuth login (`netclode auth codex`) for Codex `:oauth` sessions without API keys
 - Ansible installed locally
 
 ## 1. Clone the repo
@@ -37,27 +41,47 @@ Your server is now accessible via its Tailscale hostname (e.g., `my-server`).
 
 ## 4. Configure Tailscale for k8s ingress
 
-1. Create an [OAuth client](https://login.tailscale.com/admin/settings/oauth) with **Devices: Write** scope
-2. Enable [MagicDNS](https://login.tailscale.com/admin/dns)
+1. Create an [OAuth client](https://login.tailscale.com/admin/settings/oauth) with these scopes:
+   - `General` -> `Services`
+   - `Devices` -> `Core`
+   - `Keys` -> `Auth Keys`
+2. Allow these tags for the OAuth client:
+   - `tag:k8s-operator`
+   - `tag:k8s`
+3. Ensure both tags exist in your tailnet policy and `tag:k8s-operator` can own `tag:k8s`.
+4. Enable [MagicDNS](https://login.tailscale.com/admin/dns).
+5. Enable tailnet HTTPS certificates (DNS page -> HTTPS certificates). Without this, the ingress proxy cannot serve on `:443`.
 
 ## 5. Configure secrets
 
 Create `.env` at the repo root:
 
 ```bash
-# LLM provider (at least one required - see docs/sdk-support.md)
-ANTHROPIC_API_KEY=sk-ant-api03-xxx
+# LLM credentials (choose one path - see docs/sdk-support.md)
+# Path A: API key(s)
+# ANTHROPIC_API_KEY=sk-ant-api03-xxx
 # OPENAI_API_KEY=sk-xxx
 # MISTRAL_API_KEY=xxx
+#
+# Optional: required only if using Codex OAuth sessions
+# 32-byte base64 key for encrypting session OAuth refresh tokens at rest
+# CODEX_OAUTH_ENCRYPTION_KEY_B64=$(openssl rand -base64 32)
 
 # Tailscale (OAuth client from step 4)
 TS_OAUTH_CLIENT_ID=your-oauth-client-id
 TS_OAUTH_CLIENT_SECRET=your-oauth-client-secret
 
-# JuiceFS / S3 storage
+# Option A: external S3-compatible storage (manual)
 DO_SPACES_ACCESS_KEY=your-spaces-access-key
 DO_SPACES_SECRET_KEY=your-spaces-secret-key
 JUICEFS_BUCKET=https://fra1.digitaloceanspaces.com/your-bucket
+
+# Option B: self-host MinIO on the same VPS (automatic)
+# MINIO_ENABLED=true
+# MINIO_BUCKET_NAME=netclode-juicefs
+# MINIO_API_PORT=9000
+
+# JuiceFS metadata (optional - default shown)
 JUICEFS_META_URL=redis://redis-juicefs.netclode.svc.cluster.local:6379/0
 
 # Deployment target (Tailscale hostname from step 3)
@@ -69,7 +93,9 @@ GITHUB_APP_PRIVATE_KEY_B64=base64-encoded-pem-private-key
 GITHUB_INSTALLATION_ID=12345678
 ```
 
-Create a bucket (e.g., `netclode-juicefs`) with read/write credentials.
+Storage notes:
+- If using external S3, create a bucket (e.g., `netclode-juicefs`) with read/write credentials.
+- If `MINIO_ENABLED=true`, MinIO is installed by Ansible and `deploy-secrets` auto-wires JuiceFS credentials/bucket from `/var/secrets/minio-root-*` if `DO_SPACES_*` / `JUICEFS_BUCKET` are omitted.
 
 ## 6. Install Ansible dependencies
 
@@ -80,11 +106,20 @@ ansible-galaxy collection install -r requirements.yaml
 
 ## 7. Deploy
 
+If your server disables root SSH login, pass the SSH user explicitly:
+
+```bash
+ANSIBLE_USER=ubuntu
+```
+
 ```bash
 cd infra/ansible
 
 # Full infrastructure deployment (reads secrets from .env)
 DEPLOY_HOST=<server-ip> ansible-playbook playbooks/site.yaml
+
+# Full infrastructure deployment (non-root SSH user)
+DEPLOY_HOST=<server-ip> ansible-playbook playbooks/site.yaml -e ansible_user=$ANSIBLE_USER
 ```
 
 This installs:
@@ -101,6 +136,9 @@ This installs:
 ```bash
 cd infra/ansible
 DEPLOY_HOST=<server-ip> ansible-playbook playbooks/fetch-kubeconfig.yaml
+
+# If using non-root SSH user
+DEPLOY_HOST=<server-ip> ansible-playbook playbooks/fetch-kubeconfig.yaml -e ansible_user=$ANSIBLE_USER
 ```
 
 This merges the `netclode` context into `~/.kube/config`. Use it with:
@@ -133,6 +171,12 @@ make run-macos
 
 Then go to Settings → enter `<ingress-hostname>` → Connect.
 
+If you plan to use Codex OAuth models from CLI, authenticate once locally:
+
+```bash
+netclode auth codex
+```
+
 For iOS, see [clients/ios/README.md](/clients/ios/README.md).
 
 ## Configuration
@@ -163,6 +207,9 @@ Re-run Ansible to update infrastructure:
 ```bash
 cd infra/ansible
 DEPLOY_HOST=<server-ip> ansible-playbook playbooks/site.yaml
+
+# If using non-root SSH user
+DEPLOY_HOST=<server-ip> ansible-playbook playbooks/site.yaml -e ansible_user=$ANSIBLE_USER
 ```
 
 Or deploy only k8s manifests (faster):
@@ -170,6 +217,33 @@ Or deploy only k8s manifests (faster):
 ```bash
 cd infra/ansible
 DEPLOY_HOST=<server-ip> ansible-playbook playbooks/k8s-only.yaml
+
+# If using non-root SSH user
+DEPLOY_HOST=<server-ip> ansible-playbook playbooks/k8s-only.yaml -e ansible_user=$ANSIBLE_USER
+```
+
+To deploy custom images (for example, locally built images in your own GHCR namespace):
+
+```bash
+cd infra/ansible
+DEPLOY_HOST=<server-ip> ansible-playbook playbooks/k8s-only.yaml \
+  -e ansible_user=$ANSIBLE_USER \
+  -e control_plane_image=ghcr.io/<owner>/netclode-control-plane:<tag> \
+  -e agent_image=ghcr.io/<owner>/netclode-agent:<tag>
+```
+
+If those images are private, also pass registry pull credentials:
+
+```bash
+cd infra/ansible
+DEPLOY_HOST=<server-ip> ansible-playbook playbooks/k8s-only.yaml \
+  -e ansible_user=$ANSIBLE_USER \
+  -e control_plane_image=ghcr.io/<owner>/netclode-control-plane:<tag> \
+  -e agent_image=ghcr.io/<owner>/netclode-agent:<tag> \
+  -e image_pull_secret_name=ghcr-pull-secret \
+  -e image_pull_secret_registry=ghcr.io \
+  -e image_pull_secret_username=<github-username> \
+  -e image_pull_secret_password=<github-token-with-read-packages>
 ```
 
 To restart deployments after image updates:
@@ -178,6 +252,37 @@ To restart deployments after image updates:
 make rollout-control-plane
 make rollout-agent
 ```
+
+### Fast dev loop (no GHCR push, no Ansible workload run)
+
+For backend/agent iteration, you can build images directly on the dev host and patch only runtime workloads:
+
+```bash
+# Build on DEPLOY_HOST, import into k3s containerd, patch workloads, verify
+make dev-loop-remote
+```
+
+This path is intended for rapid local iteration only.  
+For canonical deployment, keep using traceable GHCR tags + Ansible (`site.yaml --tags k8s-manifests`).
+
+See [Fast Developer Iteration Loop](dev-iteration.md) for details and variants.
+
+### Fast dev loop (Ansible playbook)
+
+Preferred orchestration for the same fast path:
+
+```bash
+cd /Volumes/Projects/SoftwareReferences/netclode
+make dev-install-builder ANSIBLE_USER=ubuntu   # one-time host setup
+make dev-loop-ansible ANSIBLE_USER=ubuntu
+```
+
+This uses `infra/ansible/playbooks/dev-loop.yaml` with tag-scoped phases:
+- `dev-build`
+- `dev-deploy`
+- `dev-verify`
+
+For when to use full deployment instead of dev deploy, see [Fast Developer Iteration Loop](dev-iteration.md#when-to-run-full-deployment-instead).
 
 ## Rollback
 

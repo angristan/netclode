@@ -38,6 +38,11 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies"]
     verbs: ["get", "list", "watch", "create", "update", "delete"]
+  # Read control-plane ingress hostname to construct full preview URLs
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    resourceNames: ["control-plane"]
+    verbs: ["get"]
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

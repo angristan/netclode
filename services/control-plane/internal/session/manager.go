@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const (
@@ -30,18 +31,22 @@ type SessionUpdateCallback func(session *pb.Session)
 
 // AgentSessionConfig contains typed configuration for an agent session.
 type AgentSessionConfig struct {
-	SessionID       string
-	GitHubToken     string // For git credentials (from GitHub App) - not proxied, used in git URLs
-	Repos           []string
-	RepoAccess      *pb.RepoAccess
-	SdkType         *pb.SdkType
-	Model           string
-	CopilotBackend  *pb.CopilotBackend
-	CodexAccessToken  string // For Codex OAuth mode - written to ~/.codex/auth.json, can't be proxied
-	CodexIdToken      string // For Codex OAuth mode - written to ~/.codex/auth.json, can't be proxied
-	CodexRefreshToken string // For Codex OAuth mode - written to ~/.codex/auth.json, can't be proxied
-	ReasoningEffort string // For Codex reasoning effort (low, medium, high)
-	OllamaURL       string // For local Ollama inference
+	SessionID          string
+	OpenAIAPIKey       string // For Codex API mode
+	MistralAPIKey      string // For OpenCode Mistral models
+	GitHubToken        string // For git credentials (from GitHub App)
+	GitHubCopilotToken string // For Copilot SDK
+	Repos              []string
+	RepoAccess         *pb.RepoAccess
+	SdkType            *pb.SdkType
+	Model              string
+	CopilotBackend     *pb.CopilotBackend
+	CodexAccessToken   string // For Codex OAuth mode
+	CodexIdToken       string // For Codex OAuth mode
+	ReasoningEffort    string // For Codex reasoning effort (low, medium, high)
+	OllamaURL          string // For local Ollama inference
+	OpenCodeAPIKey     string // For OpenCode Zen models
+	ZaiAPIKey          string // For Z.AI GLM-4.7 models
 }
 
 // AgentConnection represents a connected agent that can receive commands.
@@ -54,6 +59,7 @@ type AgentConnection interface {
 	SendTerminalInput(data string) error
 	ResizeTerminal(cols, rows int) error
 	UpdateGitCredentials(token string, repoAccess pb.RepoAccess) error
+	UpdateCodexAuth(accessToken, idToken string, expiresAt *timestamppb.Timestamp) error
 }
 
 // WarmAgentConnection extends AgentConnection with session assignment capability.
@@ -77,6 +83,12 @@ type Manager struct {
 
 	// onSessionUpdated is called when a session is updated internally (e.g., auto-pause).
 	onSessionUpdated SessionUpdateCallback
+
+	// Backend-managed Codex OAuth device flow state.
+	codexAuthMu          sync.Mutex
+	codexAuthPending     *codexAuthPendingState
+	codexAuthLastError   string
+	codexAuthLastErrorAt time.Time
 }
 
 // NewManager creates a new session manager.
@@ -268,6 +280,20 @@ func (m *Manager) Create(ctx context.Context, name string, repos []string, repoA
 		}
 	}
 
+	// Codex OAuth sessions require backend-managed global OAuth credentials.
+	if sdkType != nil && *sdkType == pb.SdkType_SDK_TYPE_CODEX && model != nil {
+		authMode, _ := parseCodexAuthModeAndEffort(*model)
+		if authMode == "oauth" {
+			oauthData, err := m.getCodexOAuth(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("get codex oauth data: %w", err)
+			}
+			if oauthData == nil || oauthData.AccessToken == "" || oauthData.IdToken == "" || oauthData.RefreshToken == "" {
+				return nil, fmt.Errorf("codex oauth is not configured")
+			}
+		}
+	}
+
 	// Ensure we have a slot for a new active session
 	m.ensureActiveSlot(ctx, "")
 
@@ -370,69 +396,76 @@ func (m *Manager) createSandboxDirect(ctx context.Context, sessionID string, rep
 		"ANTHROPIC_API_KEY": m.config.AnthropicAPIKey,
 	}
 
+	// If no explicit restore was requested, validate stored resume PVC.
+	if snapID == "" {
+		// Not restoring from snapshot - check if we have an existing PVC (resume after pause)
+		if existingPVC, err := m.storage.GetPVCName(ctx, sessionID); err == nil && existingPVC != "" {
+			exists, checkErr := m.k8s.PVCExists(ctx, existingPVC)
+			switch {
+			case checkErr != nil:
+				// If we cannot validate, keep previous behavior to avoid unexpected data loss.
+				slog.Warn("Failed to validate stored PVC, attempting resume with stored PVC", "sessionID", sessionID, "pvc", existingPVC, "error", checkErr)
+				env[k8s.ExistingPVCEnvKey] = existingPVC
+			case exists:
+				slog.Info("Resuming with existing PVC", "sessionID", sessionID, "pvc", existingPVC)
+				env[k8s.ExistingPVCEnvKey] = existingPVC
+			default:
+				// Stale Redis state can point to a PVC that no longer exists.
+				// First, try the canonical direct-mode PVC name for this session.
+				// This handles sessions where Redis points to an old warm-pool PVC but the
+				// direct-mode PVC still exists with the user's workspace.
+				slog.Warn("Stored PVC not found, attempting latest snapshot restore", "sessionID", sessionID, "pvc", existingPVC)
+				if err := m.storage.SetPVCName(ctx, sessionID, ""); err != nil {
+					slog.Warn("Failed to clear stale PVC name from storage", "sessionID", sessionID, "pvc", existingPVC, "error", err)
+				}
+
+				canonicalPVC := fmt.Sprintf("agent-home-sess-%s", sessionID)
+				canonicalExists, canonicalErr := m.k8s.PVCExists(ctx, canonicalPVC)
+				if canonicalErr != nil {
+					slog.Warn("Failed to validate canonical session PVC", "sessionID", sessionID, "pvc", canonicalPVC, "error", canonicalErr)
+				}
+
+				if canonicalExists {
+					slog.Warn("Stored PVC missing, resuming with canonical session PVC", "sessionID", sessionID, "pvc", canonicalPVC)
+					env[k8s.ExistingPVCEnvKey] = canonicalPVC
+					if err := m.storage.SetPVCName(ctx, sessionID, canonicalPVC); err != nil {
+						slog.Warn("Failed to persist canonical PVC name", "sessionID", sessionID, "pvc", canonicalPVC, "error", err)
+					}
+				} else {
+					// Canonical PVC is also missing, restore from latest snapshot.
+					snapshots, snapErr := m.storage.ListSnapshots(ctx, sessionID)
+					if snapErr != nil {
+						slog.Warn("Failed to list snapshots for missing PVC recovery", "sessionID", sessionID, "error", snapErr)
+					} else if len(snapshots) > 0 && snapshots[0] != nil && snapshots[0].Id != "" {
+						snapID = snapshots[0].Id // ListSnapshots returns newest-first.
+						slog.Warn("Resuming from latest snapshot after missing PVC", "sessionID", sessionID, "snapshotID", snapID)
+					} else {
+						slog.Warn("No snapshots available for missing PVC recovery; creating fresh PVC", "sessionID", sessionID)
+					}
+				}
+			}
+		}
+	}
+
 	// If restoring from snapshot, create the PVC first and wait for restore to complete
 	// BEFORE creating the sandbox. This ensures the restore job finishes before the pod mounts.
 	if snapID != "" {
 		slog.Info("Creating PVC from snapshot before sandbox", "sessionID", sessionID, "snapshotID", snapID)
-
-		// Create standalone PVC from snapshot
-		pvcName, err := m.k8s.CreatePVCFromSnapshot(ctx, sessionID, snapID)
+		pvcName, err := m.preparePVCFromSnapshot(ctx, sessionID, snapID)
 		if err != nil {
-			slog.Error("Failed to create PVC from snapshot", "sessionID", sessionID, "error", err)
-			m.updateSessionStatus(ctx, sessionID, pb.SessionStatus_SESSION_STATUS_ERROR)
-			m.emitSessionError(ctx, sessionID, fmt.Sprintf("failed to create PVC from snapshot: %v", err))
-			return
-		}
-
-		// Wait for JuiceFS restore job to complete BEFORE creating sandbox.
-		// We must wait because the pod will fail with I/O errors if it tries to access
-		// the filesystem before the restore completes.
-		slog.Info("Waiting for snapshot restore job", "sessionID", sessionID, "snapshotID", snapID)
-		if err := m.k8s.WaitForRestoreJob(ctx, sessionID, snapID, 5*time.Minute); err != nil {
-			slog.Error("Snapshot restore job failed", "sessionID", sessionID, "error", err)
-			// Cleanup: delete the PVC we created
-			if delErr := m.k8s.DeletePVC(ctx, sessionID); delErr != nil {
-				slog.Error("Failed to cleanup PVC after restore failure", "sessionID", sessionID, "error", delErr)
+			// For explicit user-driven restore, fail hard.
+			// For automatic missing-PVC recovery, continue with fresh PVC.
+			if len(restoreSnapshotID) > 0 {
+				slog.Error("Failed to restore from snapshot", "sessionID", sessionID, "snapshotID", snapID, "error", err)
+				m.updateSessionStatus(ctx, sessionID, pb.SessionStatus_SESSION_STATUS_ERROR)
+				m.emitSessionError(ctx, sessionID, fmt.Sprintf("snapshot restore failed: %v", err))
+				return
 			}
-			m.updateSessionStatus(ctx, sessionID, pb.SessionStatus_SESSION_STATUS_ERROR)
-			m.emitSessionError(ctx, sessionID, fmt.Sprintf("snapshot restore failed: %v", err))
-			return
-		}
-		slog.Info("Snapshot restore completed, creating sandbox with existing PVC", "sessionID", sessionID, "pvc", pvcName)
-
-		// Ensure the session anchor ConfigMap exists and owns the new PVC.
-		// This prevents the PVC from being garbage-collected if the sandbox fails or is paused.
-		if err := m.k8s.EnsureSessionAnchor(ctx, sessionID); err != nil {
-			slog.Warn("Failed to create session anchor", "sessionID", sessionID, "error", err)
-		} else if err := m.k8s.AddSessionAnchorToPVC(ctx, sessionID, pvcName); err != nil {
-			slog.Warn("Failed to add session anchor to PVC", "sessionID", sessionID, "pvc", pvcName, "error", err)
-		}
-
-		// Delete the old orphaned PVC in background (non-blocking)
-		// Only if it's different from the new PVC (avoids deleting the newly created one)
-		go func(sessionID, newPVCName string) {
-			bgCtx := context.Background()
-			if oldPVCName, err := m.storage.GetOldPVCName(bgCtx, sessionID); err == nil && oldPVCName != "" {
-				if oldPVCName == newPVCName {
-					slog.Info("Skipping old PVC deletion (same as new PVC)", "sessionID", sessionID, "pvc", oldPVCName)
-				} else {
-					if err := m.k8s.DeletePVCByName(bgCtx, oldPVCName); err != nil {
-						slog.Warn("Failed to delete old PVC after restore", "sessionID", sessionID, "pvc", oldPVCName, "error", err)
-					} else {
-						slog.Info("Deleted old PVC after restore", "sessionID", sessionID, "pvc", oldPVCName)
-					}
-				}
-				_ = m.storage.ClearOldPVCName(bgCtx, sessionID)
-			}
-		}(sessionID, pvcName)
-
-		// Pass the existing PVC name so sandbox uses it instead of creating a new one
-		env[k8s.ExistingPVCEnvKey] = pvcName
-	} else {
-		// Not restoring from snapshot - check if we have an existing PVC (resume after pause)
-		if existingPVC, err := m.storage.GetPVCName(ctx, sessionID); err == nil && existingPVC != "" {
-			slog.Info("Resuming with existing PVC", "sessionID", sessionID, "pvc", existingPVC)
-			env[k8s.ExistingPVCEnvKey] = existingPVC
+			slog.Warn("Auto-restore from latest snapshot failed, creating sandbox with fresh PVC", "sessionID", sessionID, "snapshotID", snapID, "error", err)
+		} else {
+			slog.Info("Snapshot restore completed, creating sandbox with existing PVC", "sessionID", sessionID, "pvc", pvcName)
+			// Pass the existing PVC name so sandbox uses it instead of creating a new one.
+			env[k8s.ExistingPVCEnvKey] = pvcName
 		}
 	}
 
@@ -569,6 +602,51 @@ func (m *Manager) createSandboxDirect(ctx context.Context, sessionID string, rep
 	}
 
 	slog.Info("Session sandbox ready", "sessionID", sessionID, "fqdn", fqdn, "status", newStatus)
+}
+
+func (m *Manager) preparePVCFromSnapshot(ctx context.Context, sessionID, snapshotID string) (string, error) {
+	// Create standalone PVC from snapshot.
+	pvcName, err := m.k8s.CreatePVCFromSnapshot(ctx, sessionID, snapshotID)
+	if err != nil {
+		return "", fmt.Errorf("create PVC from snapshot: %w", err)
+	}
+
+	// Wait for JuiceFS restore job to complete BEFORE creating sandbox.
+	if err := m.k8s.WaitForRestoreJob(ctx, sessionID, snapshotID, 5*time.Minute); err != nil {
+		// Cleanup: delete the PVC we created.
+		if delErr := m.k8s.DeletePVC(ctx, sessionID); delErr != nil {
+			slog.Error("Failed to cleanup PVC after restore failure", "sessionID", sessionID, "error", delErr)
+		}
+		return "", fmt.Errorf("wait for restore job: %w", err)
+	}
+
+	// Ensure the session anchor ConfigMap exists and owns the new PVC.
+	// This prevents the PVC from being garbage-collected if the sandbox fails or is paused.
+	if err := m.k8s.EnsureSessionAnchor(ctx, sessionID); err != nil {
+		slog.Warn("Failed to create session anchor", "sessionID", sessionID, "error", err)
+	} else if err := m.k8s.AddSessionAnchorToPVC(ctx, sessionID, pvcName); err != nil {
+		slog.Warn("Failed to add session anchor to PVC", "sessionID", sessionID, "pvc", pvcName, "error", err)
+	}
+
+	// Delete the old orphaned PVC in background (non-blocking)
+	// Only if it's different from the new PVC (avoids deleting the newly created one)
+	go func(sessionID, newPVCName string) {
+		bgCtx := context.Background()
+		if oldPVCName, err := m.storage.GetOldPVCName(bgCtx, sessionID); err == nil && oldPVCName != "" {
+			if oldPVCName == newPVCName {
+				slog.Info("Skipping old PVC deletion (same as new PVC)", "sessionID", sessionID, "pvc", oldPVCName)
+			} else {
+				if err := m.k8s.DeletePVCByName(bgCtx, oldPVCName); err != nil {
+					slog.Warn("Failed to delete old PVC after restore", "sessionID", sessionID, "pvc", oldPVCName, "error", err)
+				} else {
+					slog.Info("Deleted old PVC after restore", "sessionID", sessionID, "pvc", oldPVCName)
+				}
+			}
+			_ = m.storage.ClearOldPVCName(bgCtx, sessionID)
+		}
+	}(sessionID, pvcName)
+
+	return pvcName, nil
 }
 
 // createSandboxViaClaim uses SandboxClaim for warm pool allocation
@@ -1069,7 +1147,12 @@ func (m *Manager) ExposePort(ctx context.Context, sessionID string, port int) (s
 		return "", err
 	}
 
-	previewURL := fmt.Sprintf("http://sandbox-%s:%d", sessionID, port)
+	previewHost, err := m.k8s.GetSandboxPreviewHostname(ctx, sessionID)
+	if err != nil {
+		slog.Warn("Failed to resolve sandbox preview hostname, using fallback", "sessionID", sessionID, "error", err)
+		previewHost = fmt.Sprintf("sandbox-%s", sessionID)
+	}
+	previewURL := fmt.Sprintf("http://%s:%d", previewHost, port)
 	port32 := int32(port)
 
 	// Create and persist the port_exposed event
@@ -1091,9 +1174,36 @@ func (m *Manager) ExposePort(ctx context.Context, sessionID string, port int) (s
 	return previewURL, nil
 }
 
-// restoreExposedPorts re-exposes ports that were previously exposed for a session.
+// UnexposePort removes a port exposure for a session via Tailscale and persists the event.
+func (m *Manager) UnexposePort(ctx context.Context, sessionID string, port int) error {
+	if err := m.k8s.UnexposePort(ctx, sessionID, port); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			return err
+		}
+		slog.Info("Unexpose target not found, persisting event anyway", "sessionID", sessionID, "port", port, "error", err)
+	}
+
+	port32 := int32(port)
+	event := &pb.AgentEvent{
+		Kind:          pb.AgentEventKind_AGENT_EVENT_KIND_PORT_UNEXPOSED,
+		CorrelationId: fmt.Sprintf("port-%d", port),
+		Payload: &pb.AgentEvent_PortUnexposed{
+			PortUnexposed: &pb.PortUnexposedPayload{
+				Port: port32,
+			},
+		},
+	}
+
+	// Emit to all connected clients (this also persists to the stream)
+	// Port unexposed events are final (not partial streaming)
+	m.emitAgentEvent(ctx, sessionID, event, false)
+
+	return nil
+}
+
+// restoreExposedPorts re-exposes ports that are currently exposed for a session.
 // This is called during resume to restore port exposure after sandbox recreation.
-// It reads persisted port_exposed events from the stream and re-applies them to K8s.
+// It reads persisted port_exposed/port_unexposed events from the stream and re-applies final state to K8s.
 func (m *Manager) restoreExposedPorts(ctx context.Context, sessionID string) {
 	// Read all event entries from the stream
 	entries, err := m.storage.GetStreamEntriesByTypes(ctx, sessionID, "0", 0, []string{storage.StreamEntryTypeEvent})
@@ -1102,19 +1212,24 @@ func (m *Manager) restoreExposedPorts(ctx context.Context, sessionID string) {
 		return
 	}
 
-	// Collect unique ports that were exposed
+	// Rebuild final port exposure state from persisted events.
 	exposedPorts := make(map[int32]bool)
 	for _, e := range entries {
 		if e.Entry.Partial {
 			continue // Skip partial (streaming) entries
 		}
 		var event pb.AgentEvent
-		if err := json.Unmarshal(e.Entry.Payload, &event); err != nil {
+		if err := protojson.Unmarshal(e.Entry.Payload, &event); err != nil {
 			continue
 		}
-		if event.Kind == pb.AgentEventKind_AGENT_EVENT_KIND_PORT_EXPOSED {
+		switch event.Kind {
+		case pb.AgentEventKind_AGENT_EVENT_KIND_PORT_EXPOSED:
 			if portPayload := event.GetPortExposed(); portPayload != nil {
 				exposedPorts[portPayload.Port] = true
+			}
+		case pb.AgentEventKind_AGENT_EVENT_KIND_PORT_UNEXPOSED:
+			if portPayload := event.GetPortUnexposed(); portPayload != nil {
+				delete(exposedPorts, portPayload.Port)
 			}
 		}
 	}
@@ -1522,10 +1637,15 @@ func (m *Manager) GetSessionConfig(ctx context.Context, sessionID string) (*Agen
 	}
 
 	config := &AgentSessionConfig{
-		SessionID:      sessionID,
-		SdkType:        state.Session.SdkType,
-		CopilotBackend: state.Session.CopilotBackend,
-		OllamaURL:      m.config.OllamaURL,
+		SessionID:          sessionID,
+		OpenAIAPIKey:       m.config.OpenAIAPIKey,
+		MistralAPIKey:      m.config.MistralAPIKey,
+		GitHubCopilotToken: m.config.GitHubCopilotToken,
+		SdkType:            state.Session.SdkType,
+		CopilotBackend:     state.Session.CopilotBackend,
+		OllamaURL:          m.config.OllamaURL,
+		OpenCodeAPIKey:     m.config.OpenCodeAPIKey,
+		ZaiAPIKey:          m.config.ZaiAPIKey,
 	}
 
 	if state.Session.Model != nil {
@@ -1555,27 +1675,30 @@ func (m *Manager) GetSessionConfig(ctx context.Context, sessionID string) (*Agen
 		// For Codex SDK, parse model format: base:auth:effort (e.g., gpt-5-codex:oauth:high)
 		// Also supports legacy format: base:auth (e.g., gpt-5-codex:oauth)
 		if state.Session.SdkType != nil && *state.Session.SdkType == pb.SdkType_SDK_TYPE_CODEX {
-			parts := strings.Split(model, ":")
-			if len(parts) >= 2 {
-				authMode := parts[len(parts)-1]
-				// Check if last part is a reasoning effort level
-				if authMode == "low" || authMode == "medium" || authMode == "high" || authMode == "minimal" || authMode == "xhigh" {
-					config.ReasoningEffort = authMode
-					// Auth mode is second-to-last
-					if len(parts) >= 3 {
-						authMode = parts[len(parts)-2]
-					} else {
-						authMode = ""
-					}
-				}
+			authMode, reasoningEffort := parseCodexAuthModeAndEffort(model)
+			if authMode == "" {
+				return nil, fmt.Errorf("invalid codex model for session %s: missing auth suffix (:oauth or :api)", sessionID)
+			}
+			if reasoningEffort != "" {
+				config.ReasoningEffort = reasoningEffort
+			}
 
-				// For OAuth mode, send tokens (written to ~/.codex/auth.json, can't be proxied).
-				// API mode uses OPENAI_API_KEY placeholder env var, proxied by secret-proxy.
-				if authMode == "oauth" {
-					config.CodexAccessToken = m.config.CodexAccessToken
-					config.CodexIdToken = m.config.CodexIdToken
-					config.CodexRefreshToken = m.config.CodexRefreshToken
+			// Set credentials based on auth mode.
+			// OAuth mode is session-scoped and loaded from encrypted storage, never from global env.
+			if authMode == "api" {
+				config.OpenAIAPIKey = m.config.OpenAIAPIKey
+			} else if authMode == "oauth" {
+				// Ensure OAuth sessions do not carry API-key credentials.
+				config.OpenAIAPIKey = ""
+				oauthData, err := m.getSessionCodexOAuth(ctx, sessionID)
+				if err != nil {
+					return nil, fmt.Errorf("get session codex oauth data: %w", err)
 				}
+				if oauthData == nil || oauthData.AccessToken == "" || oauthData.IdToken == "" {
+					return nil, fmt.Errorf("codex oauth tokens not configured for session %s", sessionID)
+				}
+				config.CodexAccessToken = oauthData.AccessToken
+				config.CodexIdToken = oauthData.IdToken
 			}
 		}
 	}
@@ -2097,11 +2220,9 @@ func (m *Manager) getAllowedSecretForHost(sdkType pb.SdkType, host string) (secr
 		}
 
 	case pb.SdkType_SDK_TYPE_CODEX:
-		allowedMappings = []hostMapping{
-			// Codex API mode: agent sends OPENAI_API_KEY placeholder, proxy injects OAuth access token
-			// (OpenAI API accepts OAuth tokens as Bearer tokens)
-			{hosts: []string{"api.openai.com"}, secretKey: "codex_access", placeholder: "NETCLODE_PLACEHOLDER_openai"},
-		}
+		// Codex authentication is now provided directly by backend-issued API/OAuth
+		// tokens to the agent. No placeholder replacement is configured for Codex.
+		allowedMappings = nil
 
 	default:
 		// Default to Claude behavior
@@ -2127,6 +2248,79 @@ func (m *Manager) getAllowedSecretForHost(sdkType pb.SdkType, host string) (secr
 	}
 
 	return "", ""
+}
+
+func isCodexReasoningEffort(value string) bool {
+	switch value {
+	case "minimal", "low", "medium", "high", "xhigh":
+		return true
+	default:
+		return false
+	}
+}
+
+// parseCodexAuthModeAndEffort extracts auth mode and reasoning effort from model suffix.
+// Supported formats:
+// - base:api
+// - base:oauth
+// - base:api:high
+// - base:oauth:low
+func parseCodexAuthModeAndEffort(model string) (authMode, reasoningEffort string) {
+	parts := strings.Split(model, ":")
+	if len(parts) < 2 {
+		return "", ""
+	}
+
+	authMode = parts[len(parts)-1]
+	if isCodexReasoningEffort(authMode) {
+		reasoningEffort = authMode
+		if len(parts) >= 3 {
+			authMode = parts[len(parts)-2]
+		} else {
+			authMode = ""
+		}
+	}
+
+	if authMode != "api" && authMode != "oauth" {
+		authMode = ""
+	}
+	return authMode, reasoningEffort
+}
+
+func cloneCodexOAuthData(data *storage.CodexOAuthSessionData) *storage.CodexOAuthSessionData {
+	if data == nil {
+		return nil
+	}
+	c := *data
+	if data.ExpiresAt != nil {
+		expiresAt := *data.ExpiresAt
+		c.ExpiresAt = &expiresAt
+	}
+	return &c
+}
+
+func (m *Manager) getCodexOAuth(ctx context.Context) (*storage.CodexOAuthSessionData, error) {
+	data, err := m.storage.GetCodexOAuth(ctx)
+	if err != nil || data == nil {
+		return data, err
+	}
+	return cloneCodexOAuthData(data), nil
+}
+
+func (m *Manager) saveCodexOAuth(ctx context.Context, data *storage.CodexOAuthSessionData) error {
+	if err := m.storage.SaveCodexOAuth(ctx, data); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Legacy wrappers kept while tests/branches are still converging.
+func (m *Manager) getSessionCodexOAuth(ctx context.Context, _ string) (*storage.CodexOAuthSessionData, error) {
+	return m.getCodexOAuth(ctx)
+}
+
+func (m *Manager) saveSessionCodexOAuth(ctx context.Context, _ string, data *storage.CodexOAuthSessionData) error {
+	return m.saveCodexOAuth(ctx, data)
 }
 
 // ListModels returns available models for the specified SDK type.
@@ -2649,13 +2843,18 @@ func (m *Manager) getCopilotModelsFallback() []*pb.ModelInfo {
 }
 
 // fetchCodexModels fetches OpenAI Codex models (family: gpt-codex or gpt-codex-mini)
-// Returns models with auth mode suffix based on available credentials:
+// and returns auth mode suffix variants based on backend-available credentials:
 // - ":api" suffix when OPENAI_API_KEY is configured
-// - ":oauth" suffix when CODEX_ACCESS_TOKEN is configured
-// If both are configured, returns both sets of models
+// - ":oauth" suffix when backend Codex OAuth credentials are configured
+// If both are configured, both sets are returned.
 func (m *Manager) fetchCodexModels() []*pb.ModelInfo {
 	hasAPIKey := m.config.OpenAIAPIKey != ""
-	hasOAuth := m.config.CodexAccessToken != ""
+	hasOAuth := false
+	if data, err := m.storage.GetCodexOAuth(context.Background()); err != nil {
+		slog.Warn("Failed to read global Codex OAuth credentials", "error", err)
+	} else if data != nil && data.AccessToken != "" && data.IdToken != "" && data.RefreshToken != "" {
+		hasOAuth = true
+	}
 
 	// If neither is configured, return empty
 	if !hasAPIKey && !hasOAuth {
@@ -2801,7 +3000,7 @@ func (m *Manager) CreateSnapshot(ctx context.Context, sessionID string, name str
 			continue // Skip partial (streaming) entries
 		}
 		var event pb.AgentEvent
-		if err := json.Unmarshal(e.Entry.Payload, &event); err == nil {
+		if err := protojson.Unmarshal(e.Entry.Payload, &event); err == nil {
 			if event.Kind == pb.AgentEventKind_AGENT_EVENT_KIND_MESSAGE {
 				messageEventCount++
 			}

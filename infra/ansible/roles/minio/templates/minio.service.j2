@@ -1,0 +1,22 @@
+[Unit]
+Description=MinIO
+Documentation=https://min.io/docs/minio/linux/index.html
+Wants=network-online.target
+After=network-online.target
+AssertFileIsExecutable=/usr/local/bin/minio
+
+[Service]
+Type=notify
+User={{ minio_user }}
+Group={{ minio_group }}
+WorkingDirectory={{ minio_data_dir }}
+EnvironmentFile={{ minio_config_dir }}/minio.env
+ExecStart=/usr/local/bin/minio server $MINIO_OPTS $MINIO_VOLUMES
+Restart=always
+LimitNOFILE=65536
+TasksMax=infinity
+TimeoutStopSec=infinity
+SendSIGKILL=no
+
+[Install]
+WantedBy=multi-user.target

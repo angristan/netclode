@@ -1,0 +1,273 @@
+---
+# MinIO role - self-hosted S3-compatible object storage
+
+- name: Skip if MinIO disabled
+  ansible.builtin.debug:
+    msg: "MinIO disabled via minio_enabled={{ minio_enabled }}"
+  when: not minio_enabled
+
+- name: End play if MinIO disabled
+  ansible.builtin.meta: end_host
+  when: not minio_enabled
+
+- name: Check nftables service state
+  ansible.builtin.command: systemctl is-active nftables
+  register: minio_nftables_state
+  changed_when: false
+  failed_when: false
+
+- name: Require firewall before exposing MinIO listener
+  ansible.builtin.assert:
+    that:
+      - minio_nftables_state.rc == 0
+    fail_msg: |
+      nftables must be active before deploying MinIO with network listener.
+      Run: ansible-playbook playbooks/site.yaml --tags "nftables,minio"
+
+- name: Set .env file path (defaults to repo root)
+  ansible.builtin.set_fact:
+    minio_env_file: "{{ (playbook_dir + '/../../..') | realpath }}/.env"
+
+- name: Check if .env file exists
+  ansible.builtin.stat:
+    path: "{{ minio_env_file }}"
+  delegate_to: localhost
+  become: no
+  register: minio_env_file_stat
+
+- name: Read .env file content
+  ansible.builtin.set_fact:
+    minio_env_content_raw: "{{ lookup('file', minio_env_file) }}"
+  delegate_to: localhost
+  become: no
+  when: minio_env_file_stat.stat.exists
+
+- name: Extract MinIO fallback credentials from .env
+  ansible.builtin.set_fact:
+    env_do_spaces_access_key: "{{ (minio_env_content_raw | regex_search('(?m)^DO_SPACES_ACCESS_KEY=(.*)$', '\\1') or ['']) | first }}"
+    env_do_spaces_secret_key: "{{ (minio_env_content_raw | regex_search('(?m)^DO_SPACES_SECRET_KEY=(.*)$', '\\1') or ['']) | first }}"
+  when: minio_env_file_stat.stat.exists
+
+- name: Check for persisted MinIO credentials
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /var/secrets/minio-root-user
+    - /var/secrets/minio-root-password
+  register: minio_saved_credential_files
+
+- name: Read persisted MinIO root user
+  ansible.builtin.slurp:
+    src: /var/secrets/minio-root-user
+  register: minio_saved_root_user
+  when:
+    - minio_saved_credential_files.results[0].stat.exists
+    - minio_saved_credential_files.results[1].stat.exists
+
+- name: Read persisted MinIO root password
+  ansible.builtin.slurp:
+    src: /var/secrets/minio-root-password
+  register: minio_saved_root_password
+  when:
+    - minio_saved_credential_files.results[0].stat.exists
+    - minio_saved_credential_files.results[1].stat.exists
+
+- name: Determine if .env fallback credentials are valid
+  ansible.builtin.set_fact:
+    minio_env_credentials_valid: >-
+      {{
+        (env_do_spaces_access_key | default('') | length > 2)
+        and (env_do_spaces_secret_key | default('') | length > 7)
+        and (env_do_spaces_access_key | default('') != 'your-spaces-access-key')
+        and (env_do_spaces_secret_key | default('') != 'your-spaces-secret-key')
+      }}
+
+- name: Resolve MinIO credentials from explicit vars, persisted secrets, or .env
+  ansible.builtin.set_fact:
+    minio_effective_root_user: >-
+      {{
+        minio_root_user
+        if minio_root_user | length > 0 else
+        ((minio_saved_root_user.content | b64decode | trim)
+          if (minio_saved_credential_files.results[0].stat.exists and minio_saved_credential_files.results[1].stat.exists) else
+          ((env_do_spaces_access_key | default('')) if minio_env_credentials_valid else '')
+        )
+      }}
+    minio_effective_root_password: >-
+      {{
+        minio_root_password
+        if minio_root_password | length > 0 else
+        ((minio_saved_root_password.content | b64decode | trim)
+          if (minio_saved_credential_files.results[0].stat.exists and minio_saved_credential_files.results[1].stat.exists) else
+          ((env_do_spaces_secret_key | default('')) if minio_env_credentials_valid else '')
+        )
+      }}
+    minio_effective_bucket_name: "{{ minio_bucket_name | trim }}"
+    minio_access_key_source: >-
+      {{
+        'minio_root_user variable'
+        if minio_root_user | length > 0 else
+        ('persisted /var/secrets credentials'
+          if (minio_saved_credential_files.results[0].stat.exists and minio_saved_credential_files.results[1].stat.exists) else
+          ('.env DO_SPACES_ACCESS_KEY'
+            if minio_env_credentials_valid else
+            'generated'
+          )
+        )
+      }}
+
+- name: Generate MinIO root user when no credentials are available
+  ansible.builtin.shell: "printf 'minio-%s' \"$(tr -dc 'a-z0-9' </dev/urandom | head -c 8)\""
+  register: minio_generated_root_user
+  changed_when: true
+  when: minio_effective_root_user | length == 0
+
+- name: Generate MinIO root password when no credentials are available
+  ansible.builtin.shell: "tr -dc 'A-Za-z0-9' </dev/urandom | head -c 40"
+  register: minio_generated_root_password
+  changed_when: true
+  when: minio_effective_root_password | length == 0
+
+- name: Apply generated MinIO credentials
+  ansible.builtin.set_fact:
+    minio_effective_root_user: "{{ minio_effective_root_user if minio_effective_root_user | length > 0 else (minio_generated_root_user.stdout | trim) }}"
+    minio_effective_root_password: "{{ minio_effective_root_password if minio_effective_root_password | length > 0 else (minio_generated_root_password.stdout | trim) }}"
+    minio_access_key_source: generated
+  when:
+    - minio_effective_root_user | length == 0 or minio_effective_root_password | length == 0
+
+- name: Ensure /var/secrets exists
+  ansible.builtin.file:
+    path: /var/secrets
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Persist MinIO root user
+  ansible.builtin.copy:
+    content: "{{ minio_effective_root_user }}"
+    dest: /var/secrets/minio-root-user
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Persist MinIO root password
+  ansible.builtin.copy:
+    content: "{{ minio_effective_root_password }}"
+    dest: /var/secrets/minio-root-password
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Validate MinIO credentials
+  ansible.builtin.assert:
+    that:
+      - minio_effective_root_user | length > 2
+      - minio_effective_root_password | length > 7
+    fail_msg: |
+      Missing MinIO credentials.
+      Set MINIO_ROOT_USER / MINIO_ROOT_PASSWORD as Ansible vars, or provide
+      DO_SPACES_ACCESS_KEY / DO_SPACES_SECRET_KEY in .env for fallback.
+
+- name: Install MinIO prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+    state: present
+    update_cache: yes
+
+- name: Create MinIO group
+  ansible.builtin.group:
+    name: "{{ minio_group }}"
+    system: yes
+    state: present
+
+- name: Create MinIO user
+  ansible.builtin.user:
+    name: "{{ minio_user }}"
+    group: "{{ minio_group }}"
+    system: yes
+    shell: /usr/sbin/nologin
+    home: "{{ minio_data_dir }}"
+    create_home: no
+    state: present
+
+- name: Create MinIO directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ minio_user }}"
+    group: "{{ minio_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ minio_data_dir }}", mode: "0750" }
+    - { path: "{{ minio_config_dir }}", mode: "0700" }
+
+- name: Download MinIO server binary
+  ansible.builtin.get_url:
+    url: "{{ minio_binary_url }}"
+    dest: /usr/local/bin/minio
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: Download MinIO client binary
+  ansible.builtin.get_url:
+    url: "{{ minio_client_url }}"
+    dest: /usr/local/bin/mc
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: Deploy MinIO environment file
+  ansible.builtin.template:
+    src: minio.env.j2
+    dest: "{{ minio_config_dir }}/minio.env"
+    owner: root
+    group: root
+    mode: "0600"
+  register: minio_env_template
+
+- name: Deploy MinIO systemd service
+  ansible.builtin.template:
+    src: minio.service.j2
+    dest: /etc/systemd/system/minio.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: minio_service_template
+
+- name: Enable and start MinIO service
+  ansible.builtin.systemd:
+    name: minio
+    daemon_reload: yes
+    enabled: yes
+    state: "{{ 'restarted' if (minio_env_template.changed or minio_service_template.changed) else 'started' }}"
+
+- name: Wait for MinIO API port
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ minio_api_port | int }}"
+    timeout: 30
+
+- name: Configure MinIO local alias
+  ansible.builtin.command: >
+    /usr/local/bin/mc alias set local
+    {{ minio_scheme }}://127.0.0.1:{{ minio_api_port }}
+    {{ minio_effective_root_user }}
+    {{ minio_effective_root_password }}
+  changed_when: false
+
+- name: Ensure JuiceFS bucket exists in MinIO
+  ansible.builtin.command: "/usr/local/bin/mc mb --ignore-existing local/{{ minio_effective_bucket_name }}"
+  changed_when: false
+
+- name: Show MinIO integration values
+  ansible.builtin.debug:
+    msg: |
+      MinIO API: {{ minio_scheme }}://{{ ansible_facts['default_ipv4']['address'] }}:{{ minio_api_port }}
+      MinIO Console: http://{{ ansible_facts['default_ipv4']['address'] }}:{{ minio_console_port }}
+      JuiceFS bucket URL: {{ minio_scheme }}://{{ ansible_facts['default_ipv4']['address'] }}:{{ minio_api_port }}/{{ minio_effective_bucket_name }}
+      Access key source: {{ minio_access_key_source }}

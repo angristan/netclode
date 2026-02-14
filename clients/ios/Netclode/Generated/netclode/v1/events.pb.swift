@@ -54,6 +54,9 @@ public enum Netclode_V1_AgentEventKind: SwiftProtobuf.Enum, Swift.CaseIterable {
 
   /// Agent reconnected after disconnect
   case agentReconnected // = 10
+
+  /// Port exposure was removed
+  case portUnexposed // = 11
   case UNRECOGNIZED(Int)
 
   public init() {
@@ -73,6 +76,7 @@ public enum Netclode_V1_AgentEventKind: SwiftProtobuf.Enum, Swift.CaseIterable {
     case 8: self = .repoClone
     case 9: self = .agentDisconnected
     case 10: self = .agentReconnected
+    case 11: self = .portUnexposed
     default: self = .UNRECOGNIZED(rawValue)
     }
   }
@@ -90,6 +94,7 @@ public enum Netclode_V1_AgentEventKind: SwiftProtobuf.Enum, Swift.CaseIterable {
     case .repoClone: return 8
     case .agentDisconnected: return 9
     case .agentReconnected: return 10
+    case .portUnexposed: return 11
     case .UNRECOGNIZED(let i): return i
     }
   }
@@ -107,6 +112,7 @@ public enum Netclode_V1_AgentEventKind: SwiftProtobuf.Enum, Swift.CaseIterable {
     .repoClone,
     .agentDisconnected,
     .agentReconnected,
+    .portUnexposed,
   ]
 
 }
@@ -283,6 +289,14 @@ public struct Netclode_V1_AgentEvent: Sendable {
     set {payload = .repoClone(newValue)}
   }
 
+  public var portUnexposed: Netclode_V1_PortUnexposedPayload {
+    get {
+      if case .portUnexposed(let v)? = payload {return v}
+      return Netclode_V1_PortUnexposedPayload()
+    }
+    set {payload = .portUnexposed(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   /// Event-specific payload
@@ -295,6 +309,7 @@ public struct Netclode_V1_AgentEvent: Sendable {
     case toolEnd(Netclode_V1_ToolEndPayload)
     case portExposed(Netclode_V1_PortExposedPayload)
     case repoClone(Netclode_V1_RepoClonePayload)
+    case portUnexposed(Netclode_V1_PortUnexposedPayload)
 
   }
 
@@ -346,11 +361,11 @@ public struct Netclode_V1_ToolStartPayload: Sendable {
 
   /// Set when tool runs inside a Task/subagent
   public var parentToolUseID: String {
-    get {return _parentToolUseID ?? String()}
+    get {_parentToolUseID ?? String()}
     set {_parentToolUseID = newValue}
   }
   /// Returns true if `parentToolUseID` has been explicitly set.
-  public var hasParentToolUseID: Bool {return self._parentToolUseID != nil}
+  public var hasParentToolUseID: Bool {self._parentToolUseID != nil}
   /// Clears the value of `parentToolUseID`. Subsequent reads from it will return its default value.
   public mutating func clearParentToolUseID() {self._parentToolUseID = nil}
 
@@ -370,21 +385,21 @@ public struct Netclode_V1_ToolInputPayload: Sendable {
   /// For partial=true: delta contains the streaming chunk
   /// For partial=false: input contains the full input
   public var delta: String {
-    get {return _delta ?? String()}
+    get {_delta ?? String()}
     set {_delta = newValue}
   }
   /// Returns true if `delta` has been explicitly set.
-  public var hasDelta: Bool {return self._delta != nil}
+  public var hasDelta: Bool {self._delta != nil}
   /// Clears the value of `delta`. Subsequent reads from it will return its default value.
   public mutating func clearDelta() {self._delta = nil}
 
   /// Full tool input (when partial=false)
   public var input: SwiftProtobuf.Google_Protobuf_Struct {
-    get {return _input ?? SwiftProtobuf.Google_Protobuf_Struct()}
+    get {_input ?? SwiftProtobuf.Google_Protobuf_Struct()}
     set {_input = newValue}
   }
   /// Returns true if `input` has been explicitly set.
-  public var hasInput: Bool {return self._input != nil}
+  public var hasInput: Bool {self._input != nil}
   /// Clears the value of `input`. Subsequent reads from it will return its default value.
   public mutating func clearInput() {self._input = nil}
 
@@ -405,21 +420,21 @@ public struct Netclode_V1_ToolOutputPayload: Sendable {
   /// For partial=true: delta contains the streaming chunk
   /// For partial=false: output contains the full output
   public var delta: String {
-    get {return _delta ?? String()}
+    get {_delta ?? String()}
     set {_delta = newValue}
   }
   /// Returns true if `delta` has been explicitly set.
-  public var hasDelta: Bool {return self._delta != nil}
+  public var hasDelta: Bool {self._delta != nil}
   /// Clears the value of `delta`. Subsequent reads from it will return its default value.
   public mutating func clearDelta() {self._delta = nil}
 
   /// Full tool output (when partial=false)
   public var output: String {
-    get {return _output ?? String()}
+    get {_output ?? String()}
     set {_output = newValue}
   }
   /// Returns true if `output` has been explicitly set.
-  public var hasOutput: Bool {return self._output != nil}
+  public var hasOutput: Bool {self._output != nil}
   /// Clears the value of `output`. Subsequent reads from it will return its default value.
   public mutating func clearOutput() {self._output = nil}
 
@@ -442,31 +457,31 @@ public struct Netclode_V1_ToolEndPayload: Sendable {
 
   /// Error message if failed
   public var error: String {
-    get {return _error ?? String()}
+    get {_error ?? String()}
     set {_error = newValue}
   }
   /// Returns true if `error` has been explicitly set.
-  public var hasError: Bool {return self._error != nil}
+  public var hasError: Bool {self._error != nil}
   /// Clears the value of `error`. Subsequent reads from it will return its default value.
   public mutating func clearError() {self._error = nil}
 
   /// Duration in milliseconds
   public var durationMs: Int64 {
-    get {return _durationMs ?? 0}
+    get {_durationMs ?? 0}
     set {_durationMs = newValue}
   }
   /// Returns true if `durationMs` has been explicitly set.
-  public var hasDurationMs: Bool {return self._durationMs != nil}
+  public var hasDurationMs: Bool {self._durationMs != nil}
   /// Clears the value of `durationMs`. Subsequent reads from it will return its default value.
   public mutating func clearDurationMs() {self._durationMs = nil}
 
   /// Tool output/result (for successful tools)
   public var result: String {
-    get {return _result ?? String()}
+    get {_result ?? String()}
     set {_result = newValue}
   }
   /// Returns true if `result` has been explicitly set.
-  public var hasResult: Bool {return self._result != nil}
+  public var hasResult: Bool {self._result != nil}
   /// Clears the value of `result`. Subsequent reads from it will return its default value.
   public mutating func clearResult() {self._result = nil}
 
@@ -490,21 +505,21 @@ public struct Netclode_V1_PortExposedPayload: Sendable {
 
   /// Process name listening on the port
   public var process: String {
-    get {return _process ?? String()}
+    get {_process ?? String()}
     set {_process = newValue}
   }
   /// Returns true if `process` has been explicitly set.
-  public var hasProcess: Bool {return self._process != nil}
+  public var hasProcess: Bool {self._process != nil}
   /// Clears the value of `process`. Subsequent reads from it will return its default value.
   public mutating func clearProcess() {self._process = nil}
 
   /// URL to access the exposed port
   public var previewURL: String {
-    get {return _previewURL ?? String()}
+    get {_previewURL ?? String()}
     set {_previewURL = newValue}
   }
   /// Returns true if `previewURL` has been explicitly set.
-  public var hasPreviewURL: Bool {return self._previewURL != nil}
+  public var hasPreviewURL: Bool {self._previewURL != nil}
   /// Clears the value of `previewURL`. Subsequent reads from it will return its default value.
   public mutating func clearPreviewURL() {self._previewURL = nil}
 
@@ -514,6 +529,20 @@ public struct Netclode_V1_PortExposedPayload: Sendable {
 
   fileprivate var _process: String? = nil
   fileprivate var _previewURL: String? = nil
+}
+
+/// PortUnexposedPayload contains data for port removal events.
+public struct Netclode_V1_PortUnexposedPayload: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// The port number no longer exposed
+  public var port: Int32 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
 }
 
 /// RepoClonePayload contains data for repository clone progress events.
@@ -541,7 +570,7 @@ public struct Netclode_V1_RepoClonePayload: Sendable {
 fileprivate let _protobuf_package = "netclode.v1"
 
 extension Netclode_V1_AgentEventKind: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0AGENT_EVENT_KIND_UNSPECIFIED\0\u{1}AGENT_EVENT_KIND_MESSAGE\0\u{1}AGENT_EVENT_KIND_THINKING\0\u{1}AGENT_EVENT_KIND_TOOL_START\0\u{1}AGENT_EVENT_KIND_TOOL_INPUT\0\u{1}AGENT_EVENT_KIND_TOOL_OUTPUT\0\u{1}AGENT_EVENT_KIND_TOOL_END\0\u{1}AGENT_EVENT_KIND_PORT_EXPOSED\0\u{1}AGENT_EVENT_KIND_REPO_CLONE\0\u{1}AGENT_EVENT_KIND_AGENT_DISCONNECTED\0\u{1}AGENT_EVENT_KIND_AGENT_RECONNECTED\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0AGENT_EVENT_KIND_UNSPECIFIED\0\u{1}AGENT_EVENT_KIND_MESSAGE\0\u{1}AGENT_EVENT_KIND_THINKING\0\u{1}AGENT_EVENT_KIND_TOOL_START\0\u{1}AGENT_EVENT_KIND_TOOL_INPUT\0\u{1}AGENT_EVENT_KIND_TOOL_OUTPUT\0\u{1}AGENT_EVENT_KIND_TOOL_END\0\u{1}AGENT_EVENT_KIND_PORT_EXPOSED\0\u{1}AGENT_EVENT_KIND_REPO_CLONE\0\u{1}AGENT_EVENT_KIND_AGENT_DISCONNECTED\0\u{1}AGENT_EVENT_KIND_AGENT_RECONNECTED\0\u{1}AGENT_EVENT_KIND_PORT_UNEXPOSED\0")
 }
 
 extension Netclode_V1_MessageRole: SwiftProtobuf._ProtoNameProviding {
@@ -554,7 +583,7 @@ extension Netclode_V1_RepoCloneStage: SwiftProtobuf._ProtoNameProviding {
 
 extension Netclode_V1_AgentEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentEvent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{3}correlation_id\0\u{1}message\0\u{1}thinking\0\u{3}tool_start\0\u{3}tool_input\0\u{3}tool_output\0\u{3}tool_end\0\u{3}port_exposed\0\u{3}repo_clone\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{3}correlation_id\0\u{1}message\0\u{1}thinking\0\u{3}tool_start\0\u{3}tool_input\0\u{3}tool_output\0\u{3}tool_end\0\u{3}port_exposed\0\u{3}repo_clone\0\u{3}port_unexposed\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -668,6 +697,19 @@ extension Netclode_V1_AgentEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageI
           self.payload = .repoClone(v)
         }
       }()
+      case 11: try {
+        var v: Netclode_V1_PortUnexposedPayload?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .portUnexposed(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .portUnexposed(v)
+        }
+      }()
       default: break
       }
     }
@@ -716,6 +758,10 @@ extension Netclode_V1_AgentEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageI
     case .repoClone?: try {
       guard case .repoClone(let v)? = self.payload else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
+    }()
+    case .portUnexposed?: try {
+      guard case .portUnexposed(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
     }()
     case nil: break
     }
@@ -1006,6 +1052,36 @@ extension Netclode_V1_PortExposedPayload: SwiftProtobuf.Message, SwiftProtobuf._
     if lhs.port != rhs.port {return false}
     if lhs._process != rhs._process {return false}
     if lhs._previewURL != rhs._previewURL {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Netclode_V1_PortUnexposedPayload: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PortUnexposedPayload"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}port\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt32Field(value: &self.port) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.port != 0 {
+      try visitor.visitSingularInt32Field(value: self.port, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Netclode_V1_PortUnexposedPayload, rhs: Netclode_V1_PortUnexposedPayload) -> Bool {
+    if lhs.port != rhs.port {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

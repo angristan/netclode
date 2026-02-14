@@ -505,7 +505,6 @@ type SessionConfig struct {
 	CodexAccessToken   *string                `protobuf:"bytes,11,opt,name=codex_access_token,json=codexAccessToken,proto3,oneof" json:"codex_access_token,omitempty"`
 	CodexIdToken       *string                `protobuf:"bytes,12,opt,name=codex_id_token,json=codexIdToken,proto3,oneof" json:"codex_id_token,omitempty"`
 	OpenaiApiKey       *string                `protobuf:"bytes,13,opt,name=openai_api_key,json=openaiApiKey,proto3,oneof" json:"openai_api_key,omitempty"`
-	CodexRefreshToken  *string                `protobuf:"bytes,14,opt,name=codex_refresh_token,json=codexRefreshToken,proto3,oneof" json:"codex_refresh_token,omitempty"`
 	ReasoningEffort    *string                `protobuf:"bytes,15,opt,name=reasoning_effort,json=reasoningEffort,proto3,oneof" json:"reasoning_effort,omitempty"`
 	MistralApiKey      *string                `protobuf:"bytes,16,opt,name=mistral_api_key,json=mistralApiKey,proto3,oneof" json:"mistral_api_key,omitempty"`
 	OllamaUrl          *string                `protobuf:"bytes,17,opt,name=ollama_url,json=ollamaUrl,proto3,oneof" json:"ollama_url,omitempty"`                  // URL for local Ollama inference (e.g., "http://ollama.netclode.svc.cluster.local:11434")
@@ -632,13 +631,6 @@ func (x *SessionConfig) GetCodexIdToken() string {
 func (x *SessionConfig) GetOpenaiApiKey() string {
 	if x != nil && x.OpenaiApiKey != nil {
 		return *x.OpenaiApiKey
-	}
-	return ""
-}
-
-func (x *SessionConfig) GetCodexRefreshToken() string {
-	if x != nil && x.CodexRefreshToken != nil {
-		return *x.CodexRefreshToken
 	}
 	return ""
 }
@@ -1622,7 +1614,7 @@ const file_netclode_v1_common_proto_rawDesc = "" +
 	"\rmessage_count\x18\x02 \x01(\x05H\x00R\fmessageCount\x88\x01\x01\x12)\n" +
 	"\x0elast_stream_id\x18\x03 \x01(\tH\x01R\flastStreamId\x88\x01\x01B\x10\n" +
 	"\x0e_message_countB\x11\n" +
-	"\x0f_last_stream_id\"\xf9\b\n" +
+	"\x0f_last_stream_id\"\xac\b\n" +
 	"\rSessionConfig\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12#\n" +
@@ -1639,15 +1631,14 @@ const file_netclode_v1_common_proto_rawDesc = "" +
 	" \x01(\tH\x05R\x12githubCopilotToken\x88\x01\x01\x121\n" +
 	"\x12codex_access_token\x18\v \x01(\tH\x06R\x10codexAccessToken\x88\x01\x01\x12)\n" +
 	"\x0ecodex_id_token\x18\f \x01(\tH\aR\fcodexIdToken\x88\x01\x01\x12)\n" +
-	"\x0eopenai_api_key\x18\r \x01(\tH\bR\fopenaiApiKey\x88\x01\x01\x123\n" +
-	"\x13codex_refresh_token\x18\x0e \x01(\tH\tR\x11codexRefreshToken\x88\x01\x01\x12.\n" +
-	"\x10reasoning_effort\x18\x0f \x01(\tH\n" +
-	"R\x0freasoningEffort\x88\x01\x01\x12+\n" +
-	"\x0fmistral_api_key\x18\x10 \x01(\tH\vR\rmistralApiKey\x88\x01\x01\x12\"\n" +
+	"\x0eopenai_api_key\x18\r \x01(\tH\bR\fopenaiApiKey\x88\x01\x01\x12.\n" +
+	"\x10reasoning_effort\x18\x0f \x01(\tH\tR\x0freasoningEffort\x88\x01\x01\x12+\n" +
+	"\x0fmistral_api_key\x18\x10 \x01(\tH\n" +
+	"R\rmistralApiKey\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"ollama_url\x18\x11 \x01(\tH\fR\tollamaUrl\x88\x01\x01\x12-\n" +
-	"\x10opencode_api_key\x18\x12 \x01(\tH\rR\x0eopencodeApiKey\x88\x01\x01\x12#\n" +
-	"\vzai_api_key\x18\x13 \x01(\tH\x0eR\tzaiApiKey\x88\x01\x01B\x0f\n" +
+	"ollama_url\x18\x11 \x01(\tH\vR\tollamaUrl\x88\x01\x01\x12-\n" +
+	"\x10opencode_api_key\x18\x12 \x01(\tH\fR\x0eopencodeApiKey\x88\x01\x01\x12#\n" +
+	"\vzai_api_key\x18\x13 \x01(\tH\rR\tzaiApiKey\x88\x01\x01B\x0f\n" +
 	"\r_github_tokenB\x0e\n" +
 	"\f_repo_accessB\v\n" +
 	"\t_sdk_typeB\b\n" +
@@ -1656,8 +1647,7 @@ const file_netclode_v1_common_proto_rawDesc = "" +
 	"\x15_github_copilot_tokenB\x15\n" +
 	"\x13_codex_access_tokenB\x11\n" +
 	"\x0f_codex_id_tokenB\x11\n" +
-	"\x0f_openai_api_keyB\x16\n" +
-	"\x14_codex_refresh_tokenB\x13\n" +
+	"\x0f_openai_api_keyB\x13\n" +
 	"\x11_reasoning_effortB\x12\n" +
 	"\x10_mistral_api_keyB\r\n" +
 	"\v_ollama_urlB\x13\n" +
