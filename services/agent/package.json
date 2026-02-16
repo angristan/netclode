@@ -19,7 +19,7 @@
     "@github/copilot-sdk": "^0.1.23",
     "@openai/codex-sdk": "^0.93.0",
     "node-pty": "^1.0.0",
-    "undici": "^7.21.0"
+    "undici": "^7.22.0"
   },
   "devDependencies": {
     "@types/node": "^25.2.0",
