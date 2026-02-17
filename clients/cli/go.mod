@@ -9,7 +9,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.49.0
-	golang.org/x/term v0.39.0
+	golang.org/x/term v0.40.0
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -35,12 +35,10 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	go.opentelemetry.io/otel/metric v1.39.0 // indirect
-	go.opentelemetry.io/otel/trace v1.39.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect
-	google.golang.org/grpc v1.78.0 // indirect
+	google.golang.org/grpc v1.79.1 // indirect
 )
 
 replace github.com/angristan/netclode/services/control-plane => ../../services/control-plane
