@@ -2,7 +2,12 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
+# Copy go mod files first and download deps (cached unless go.mod/go.sum change)
 COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+# Copy source and build (re-runs on code changes, but modules are cached)
 COPY . .
 
 RUN --mount=type=cache,target=/go/pkg/mod \

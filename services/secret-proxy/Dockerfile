@@ -3,15 +3,18 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
-# Copy go mod files
+# Copy go mod files and download deps (cached unless go.mod/go.sum change)
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy source code
 COPY . .
 
 # Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /secret-proxy ./cmd/secret-proxy
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /secret-proxy ./cmd/secret-proxy
 
 # Runtime stage
 FROM alpine:3.21

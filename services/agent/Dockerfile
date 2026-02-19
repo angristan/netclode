@@ -5,6 +5,12 @@
 #   mise install go@latest
 #   mise install rust@latest
 #
+# Layer ordering is optimized for cache efficiency:
+#   1. Base OS packages (rarely changes)
+#   2. Global tool installs (changes on tool version bumps)
+#   3. Package dependency install (changes on package.json/lock updates)
+#   4. Source copy + bundle (changes on every code change)
+#
 FROM debian:trixie-slim AS base
 
 # Install essentials + mise + docker
@@ -53,31 +59,11 @@ WORKDIR /build
 # Install esbuild for bundling
 RUN npm install -g esbuild
 
-# Copy agent source
-COPY services/agent services/agent
-
-# Install agent dependencies
-WORKDIR /build/services/agent
-RUN --mount=type=cache,target=/root/.npm npm install
-
-# Bundle agent
-RUN esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/agent.js
-
-# Remove devDependencies (typescript, vitest, etc. not needed at runtime)
-RUN npm prune --omit=dev
-
-# Remove unused platform binaries (keep only linux-x64)
-# @openai/codex-sdk: ships binaries for all 6 platforms (~270MB savings)
-# @github/copilot: prebuilds and ripgrep for all platforms (~60MB savings)
-RUN rm -rf node_modules/@openai/codex-sdk/vendor/aarch64-* \
-           node_modules/@openai/codex-sdk/vendor/x86_64-apple-* \
-           node_modules/@openai/codex-sdk/vendor/x86_64-pc-windows-* \
-           node_modules/@github/copilot/prebuilds/darwin-* \
-           node_modules/@github/copilot/prebuilds/win32-* \
-           node_modules/@github/copilot/prebuilds/linux-arm64 \
-           node_modules/@github/copilot/ripgrep/bin/darwin-* \
-           node_modules/@github/copilot/ripgrep/bin/win32-* \
-           node_modules/@github/copilot/ripgrep/bin/linux-arm64
+# =============================================================================
+# Global tool installs (BEFORE source copy for layer caching)
+# These rarely change and are expensive to install. By placing them before
+# the source COPY, they stay cached on typical code-only changes.
+# =============================================================================
 
 # Claude CLI
 RUN --mount=type=cache,target=/root/.npm \
@@ -113,6 +99,37 @@ RUN rm -rf /root/.local/share/mise/installs/node/24/include \
            /root/.local/share/mise/installs/node/24/lib/node_modules/@github/copilot/ripgrep/bin/linux-arm64
 
 # =============================================================================
+# Agent dependency install (cached unless package.json/lock change)
+# =============================================================================
+COPY services/agent/package.json services/agent/package-lock.json /build/services/agent/
+WORKDIR /build/services/agent
+RUN --mount=type=cache,target=/root/.npm npm install
+
+# =============================================================================
+# Agent source copy + bundle (re-runs on every code change)
+# =============================================================================
+COPY services/agent /build/services/agent
+
+# Bundle agent
+RUN esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/agent.js
+
+# Remove devDependencies (typescript, vitest, etc. not needed at runtime)
+RUN npm prune --omit=dev
+
+# Remove unused platform binaries (keep only linux-x64)
+# @openai/codex-sdk: ships binaries for all 6 platforms (~270MB savings)
+# @github/copilot: prebuilds and ripgrep for all platforms (~60MB savings)
+RUN rm -rf node_modules/@openai/codex-sdk/vendor/aarch64-* \
+           node_modules/@openai/codex-sdk/vendor/x86_64-apple-* \
+           node_modules/@openai/codex-sdk/vendor/x86_64-pc-windows-* \
+           node_modules/@github/copilot/prebuilds/darwin-* \
+           node_modules/@github/copilot/prebuilds/win32-* \
+           node_modules/@github/copilot/prebuilds/linux-arm64 \
+           node_modules/@github/copilot/ripgrep/bin/darwin-* \
+           node_modules/@github/copilot/ripgrep/bin/win32-* \
+           node_modules/@github/copilot/ripgrep/bin/linux-arm64
+
+# =============================================================================
 # Runtime
 # =============================================================================
 FROM base AS runtime
@@ -126,15 +143,17 @@ RUN useradd -m -u 1000 -G docker -d /agent agent && \
     mkdir -p /agent /opt/agent && \
     chown -R agent:agent /agent /opt/agent
 
-# Copy bundled app and dependencies
-COPY --from=builder --chown=agent:agent /build/services/agent/dist/agent.js /opt/agent/
-COPY --from=builder --chown=agent:agent /build/services/agent/node_modules /opt/agent/node_modules
+# Install bun (no dependency on builder - can run in parallel)
+RUN apt-get update && apt-get install -y --no-install-recommends unzip && \
+    curl -fsSL "https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64.zip" -o /tmp/bun.zip && \
+    unzip /tmp/bun.zip -d /tmp && \
+    mv /tmp/bun-linux-x64/bun /opt/bun && \
+    chmod +x /opt/bun && \
+    rm -rf /tmp/bun.zip /tmp/bun-linux-x64 /var/lib/apt/lists/*
 
-# Copy OpenCode and GitHub CLI binaries from builder
+# Copy stable binaries (these rarely change, so place before frequently-changing layers)
 COPY --from=builder /usr/local/bin/opencode /usr/local/bin/opencode
 COPY --from=builder /usr/local/bin/gh /usr/local/bin/gh
-
-# Copy auth-proxy binary (adds SA token to proxy requests)
 COPY --from=go-builder /build/auth-proxy/auth-proxy /usr/local/bin/auth-proxy
 
 # Copy mise binary to /opt (NOT /agent which is a volume mount)
@@ -143,14 +162,6 @@ COPY --from=go-builder /build/auth-proxy/auth-proxy /usr/local/bin/auth-proxy
 RUN mkdir -p /opt/mise/bin && \
     cp /root/.local/bin/mise /opt/mise/bin/
 COPY --from=builder /root/.local/share/mise/installs/node/24 /opt/node
-
-# Install bun (download binary directly)
-RUN apt-get update && apt-get install -y --no-install-recommends unzip && \
-    curl -fsSL "https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64.zip" -o /tmp/bun.zip && \
-    unzip /tmp/bun.zip -d /tmp && \
-    mv /tmp/bun-linux-x64/bun /opt/bun && \
-    chmod +x /opt/bun && \
-    rm -rf /tmp/bun.zip /tmp/bun-linux-x64 /var/lib/apt/lists/*
 
 # Pre-install OpenCode plugin to both:
 # 1. Bun's global cache (/opt/bun-cache) - for faster installs if needed
@@ -189,6 +200,10 @@ RUN echo 'export MISE_DATA_DIR=/agent/.local/share/mise' >> /etc/profile.d/mise.
     echo 'export XDG_CONFIG_HOME=/agent/.local/config' >> /etc/bash.bashrc && \
     echo 'export PATH="/agent/.local/share/mise/shims:/opt/mise/bin:/opt/node/bin:/opt:$PATH"' >> /etc/bash.bashrc && \
     echo 'export PS1='"'"'\[\033[01;32m\]\u\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '"'" >> /etc/bash.bashrc
+
+# Copy frequently-changing files LAST to maximize cache hits above
+COPY --from=builder --chown=agent:agent /build/services/agent/dist/agent.js /opt/agent/
+COPY --from=builder --chown=agent:agent /build/services/agent/node_modules /opt/agent/node_modules
 
 # Copy entrypoint script
 COPY services/agent/entrypoint.sh /entrypoint.sh
