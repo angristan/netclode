@@ -34,7 +34,7 @@ jobs:
 
       # --- Test ---
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: services/github-bot/go.mod
           cache-dependency-path: services/github-bot/go.sum
