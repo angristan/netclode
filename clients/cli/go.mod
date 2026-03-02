@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/huh/spinner v0.0.0-20260202112050-cf338358ac5c
 	github.com/fatih/color v1.18.0
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/net v0.50.0
+	golang.org/x/net v0.51.0
 	golang.org/x/term v0.40.0
 	google.golang.org/protobuf v1.36.11
 )
