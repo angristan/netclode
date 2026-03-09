@@ -52,7 +52,7 @@ jobs:
 
       # --- Build ---
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Container Registry
         if: github.event_name != 'pull_request'
