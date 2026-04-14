@@ -4,18 +4,61 @@ updates:
     directory: /services/agent
     schedule:
       interval: weekly
+    groups:
+      all-npm:
+        patterns:
+          - "*"
 
   - package-ecosystem: gomod
     directory: /services/control-plane
     schedule:
       interval: weekly
+    groups:
+      all-go:
+        patterns:
+          - "*"
+
+  - package-ecosystem: gomod
+    directory: /services/github-bot
+    schedule:
+      interval: weekly
+    groups:
+      all-go:
+        patterns:
+          - "*"
+
+  - package-ecosystem: gomod
+    directory: /services/secret-proxy
+    schedule:
+      interval: weekly
+    groups:
+      all-go:
+        patterns:
+          - "*"
 
   - package-ecosystem: gomod
     directory: /clients/cli
     schedule:
       interval: weekly
+    groups:
+      all-go:
+        patterns:
+          - "*"
+
+  - package-ecosystem: gomod
+    directory: /services/agent/auth-proxy
+    schedule:
+      interval: weekly
+    groups:
+      all-go:
+        patterns:
+          - "*"
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      all-actions:
+        patterns:
+          - "*"
