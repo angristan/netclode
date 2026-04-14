@@ -3,7 +3,7 @@ updates:
   - package-ecosystem: npm
     directory: /services/agent
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       all-npm:
         patterns:
@@ -12,7 +12,7 @@ updates:
   - package-ecosystem: gomod
     directory: /services/control-plane
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       all-go:
         patterns:
@@ -21,7 +21,7 @@ updates:
   - package-ecosystem: gomod
     directory: /services/github-bot
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       all-go:
         patterns:
@@ -30,7 +30,7 @@ updates:
   - package-ecosystem: gomod
     directory: /services/secret-proxy
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       all-go:
         patterns:
@@ -39,7 +39,7 @@ updates:
   - package-ecosystem: gomod
     directory: /clients/cli
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       all-go:
         patterns:
@@ -48,7 +48,7 @@ updates:
   - package-ecosystem: gomod
     directory: /services/agent/auth-proxy
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       all-go:
         patterns:
@@ -57,7 +57,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       all-actions:
         patterns:
