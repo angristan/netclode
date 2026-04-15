@@ -511,8 +511,12 @@ type SessionConfig struct {
 	OllamaUrl          *string                `protobuf:"bytes,17,opt,name=ollama_url,json=ollamaUrl,proto3,oneof" json:"ollama_url,omitempty"`                  // URL for local Ollama inference (e.g., "http://ollama.netclode.svc.cluster.local:11434")
 	OpencodeApiKey     *string                `protobuf:"bytes,18,opt,name=opencode_api_key,json=opencodeApiKey,proto3,oneof" json:"opencode_api_key,omitempty"` // OpenCode Zen API key (for paid models, empty/"public" = free tier only)
 	ZaiApiKey          *string                `protobuf:"bytes,19,opt,name=zai_api_key,json=zaiApiKey,proto3,oneof" json:"zai_api_key,omitempty"`                // Z.AI API key (for GLM-4.7 models via Anthropic-compatible endpoint)
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// GitHub Copilot OAuth tokens for OpenCode SDK (written to auth.json, not exposed to proxy)
+	GithubCopilotOauthAccessToken  *string `protobuf:"bytes,20,opt,name=github_copilot_oauth_access_token,json=githubCopilotOauthAccessToken,proto3,oneof" json:"github_copilot_oauth_access_token,omitempty"`
+	GithubCopilotOauthRefreshToken *string `protobuf:"bytes,21,opt,name=github_copilot_oauth_refresh_token,json=githubCopilotOauthRefreshToken,proto3,oneof" json:"github_copilot_oauth_refresh_token,omitempty"`
+	GithubCopilotOauthTokenExpires *string `protobuf:"bytes,22,opt,name=github_copilot_oauth_token_expires,json=githubCopilotOauthTokenExpires,proto3,oneof" json:"github_copilot_oauth_token_expires,omitempty"`
+	unknownFields                  protoimpl.UnknownFields
+	sizeCache                      protoimpl.SizeCache
 }
 
 func (x *SessionConfig) Reset() {
@@ -674,6 +678,27 @@ func (x *SessionConfig) GetOpencodeApiKey() string {
 func (x *SessionConfig) GetZaiApiKey() string {
 	if x != nil && x.ZaiApiKey != nil {
 		return *x.ZaiApiKey
+	}
+	return ""
+}
+
+func (x *SessionConfig) GetGithubCopilotOauthAccessToken() string {
+	if x != nil && x.GithubCopilotOauthAccessToken != nil {
+		return *x.GithubCopilotOauthAccessToken
+	}
+	return ""
+}
+
+func (x *SessionConfig) GetGithubCopilotOauthRefreshToken() string {
+	if x != nil && x.GithubCopilotOauthRefreshToken != nil {
+		return *x.GithubCopilotOauthRefreshToken
+	}
+	return ""
+}
+
+func (x *SessionConfig) GetGithubCopilotOauthTokenExpires() string {
+	if x != nil && x.GithubCopilotOauthTokenExpires != nil {
+		return *x.GithubCopilotOauthTokenExpires
 	}
 	return ""
 }
@@ -1622,7 +1647,7 @@ const file_netclode_v1_common_proto_rawDesc = "" +
 	"\rmessage_count\x18\x02 \x01(\x05H\x00R\fmessageCount\x88\x01\x01\x12)\n" +
 	"\x0elast_stream_id\x18\x03 \x01(\tH\x01R\flastStreamId\x88\x01\x01B\x10\n" +
 	"\x0e_message_countB\x11\n" +
-	"\x0f_last_stream_id\"\xf9\b\n" +
+	"\x0f_last_stream_id\"\xde\v\n" +
 	"\rSessionConfig\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12#\n" +
@@ -1647,7 +1672,10 @@ const file_netclode_v1_common_proto_rawDesc = "" +
 	"\n" +
 	"ollama_url\x18\x11 \x01(\tH\fR\tollamaUrl\x88\x01\x01\x12-\n" +
 	"\x10opencode_api_key\x18\x12 \x01(\tH\rR\x0eopencodeApiKey\x88\x01\x01\x12#\n" +
-	"\vzai_api_key\x18\x13 \x01(\tH\x0eR\tzaiApiKey\x88\x01\x01B\x0f\n" +
+	"\vzai_api_key\x18\x13 \x01(\tH\x0eR\tzaiApiKey\x88\x01\x01\x12M\n" +
+	"!github_copilot_oauth_access_token\x18\x14 \x01(\tH\x0fR\x1dgithubCopilotOauthAccessToken\x88\x01\x01\x12O\n" +
+	"\"github_copilot_oauth_refresh_token\x18\x15 \x01(\tH\x10R\x1egithubCopilotOauthRefreshToken\x88\x01\x01\x12O\n" +
+	"\"github_copilot_oauth_token_expires\x18\x16 \x01(\tH\x11R\x1egithubCopilotOauthTokenExpires\x88\x01\x01B\x0f\n" +
 	"\r_github_tokenB\x0e\n" +
 	"\f_repo_accessB\v\n" +
 	"\t_sdk_typeB\b\n" +
@@ -1662,7 +1690,10 @@ const file_netclode_v1_common_proto_rawDesc = "" +
 	"\x10_mistral_api_keyB\r\n" +
 	"\v_ollama_urlB\x13\n" +
 	"\x11_opencode_api_keyB\x0e\n" +
-	"\f_zai_api_key\"\xe0\x02\n" +
+	"\f_zai_api_keyB$\n" +
+	"\"_github_copilot_oauth_access_tokenB%\n" +
+	"#_github_copilot_oauth_refresh_tokenB%\n" +
+	"#_github_copilot_oauth_token_expires\"\xe0\x02\n" +
 	"\vStreamEntry\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x128\n" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x18\n" +

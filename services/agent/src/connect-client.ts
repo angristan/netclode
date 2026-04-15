@@ -489,6 +489,9 @@ async function handleControlPlaneMessage(
               ollamaUrl: config.ollamaUrl,
               openCodeApiKey: process.env.OPENCODE_API_KEY || "",
               zaiApiKey: process.env.ZAI_API_KEY || "",
+              githubCopilotOAuthAccessToken: config.githubCopilotOauthAccessToken,
+              githubCopilotOAuthRefreshToken: config.githubCopilotOauthRefreshToken,
+              githubCopilotOAuthTokenExpires: config.githubCopilotOauthTokenExpires,
             });
           } catch (err) {
             console.error("[agent] Failed to initialize SDK adapter:", err);
@@ -614,6 +617,9 @@ async function handleSessionAssigned(
       ollamaUrl: config.ollamaUrl,
       openCodeApiKey: process.env.OPENCODE_API_KEY || "",
       zaiApiKey: process.env.ZAI_API_KEY || "",
+      githubCopilotOAuthAccessToken: config.githubCopilotOauthAccessToken,
+      githubCopilotOAuthRefreshToken: config.githubCopilotOauthRefreshToken,
+      githubCopilotOAuthTokenExpires: config.githubCopilotOauthTokenExpires,
     });
     console.log("[agent] SDK adapter initialized (warm pool mode)");
   } catch (err) {

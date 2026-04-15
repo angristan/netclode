@@ -52,6 +52,9 @@
         mistral_api_key: "{{ (env_content_raw | regex_search('(?m)^MISTRAL_API_KEY=(.*)$', '\\1') or [''])[0] }}"
         opencode_api_key: "{{ (env_content_raw | regex_search('(?m)^OPENCODE_API_KEY=(.*)$', '\\1') or [''])[0] }}"
         zai_api_key: "{{ (env_content_raw | regex_search('(?m)^ZAI_API_KEY=(.*)$', '\\1') or [''])[0] }}"
+        github_copilot_oauth_access_token: "{{ (env_content_raw | regex_search('(?m)^GITHUB_COPILOT_OAUTH_ACCESS_TOKEN=(.*)$', '\\1') or [''])[0] }}"
+        github_copilot_oauth_refresh_token: "{{ (env_content_raw | regex_search('(?m)^GITHUB_COPILOT_OAUTH_REFRESH_TOKEN=(.*)$', '\\1') or [''])[0] }}"
+        github_copilot_oauth_token_expires: "{{ (env_content_raw | regex_search('(?m)^GITHUB_COPILOT_OAUTH_TOKEN_EXPIRES=(.*)$', '\\1') or ['0'])[0] }}"
         github_webhook_secret: "{{ (env_content_raw | regex_search('(?m)^GITHUB_WEBHOOK_SECRET=(.*)$', '\\1') or [''])[0] }}"
         max_active_sessions: "{{ env_content_raw | regex_search('(?m)^MAX_ACTIVE_SESSIONS=(.*)$', '\\1') | first | default('5') }}"
         max_concurrent_github_sessions: "{{ env_content_raw | regex_search('(?m)^MAX_CONCURRENT_GITHUB_SESSIONS=(.*)$', '\\1') | first | default('5') }}"
@@ -129,6 +132,7 @@
             | combine({'opencode': opencode_api_key} if opencode_api_key | length > 0 else {})
             | combine({'zai': zai_api_key} if zai_api_key | length > 0 else {})
             | combine({'github_copilot': github_copilot_token} if github_copilot_token | length > 0 else {})
+            | combine({'github_copilot_oauth': github_copilot_oauth_access_token} if github_copilot_oauth_access_token | length > 0 else {})
             | combine({'codex_access': codex_access_token} if codex_access_token | length > 0 else {})
             | combine({'codex_id': codex_id_token} if codex_id_token | length > 0 else {})
             | combine({'codex_refresh': codex_refresh_token} if codex_refresh_token | length > 0 else {})
@@ -182,6 +186,11 @@
             codex-access-token-placeholder: "NETCLODE_PLACEHOLDER_codex_access"
             codex-id-token-placeholder: "NETCLODE_PLACEHOLDER_codex_id"
             codex-refresh-token-placeholder: "NETCLODE_PLACEHOLDER_codex_refresh"
+            # GitHub Copilot OAuth tokens (for OpenCode provider; obtained via device-flow)
+            # These are NOT proxied — injected directly into sandbox env by control-plane
+            github-copilot-oauth-access-token: "{{ github_copilot_oauth_access_token }}"
+            github-copilot-oauth-refresh-token: "{{ github_copilot_oauth_refresh_token }}"
+            github-copilot-oauth-token-expires: "{{ github_copilot_oauth_token_expires }}"
             # Non-proxied secrets (used directly, not through proxy)
             # GITHUB_TOKEN is for git operations (clone/push) - uses credential helper, not HTTP headers
             github-token: "{{ github_token }}"

@@ -12,16 +12,21 @@ type Config struct {
 	AnthropicAPIKey    string
 	OpenAIAPIKey       string // OpenAI API key (for Codex SDK)
 	MistralAPIKey      string // Mistral API key (for OpenCode SDK)
-	GitHubCopilotToken string // GitHub PAT with Copilot scope (for Copilot SDK)
-	K8sNamespace       string
-	AgentImage         string
-	SandboxTemplate    string
-	DefaultCPUs        int
-	DefaultMemoryMB    int
-	RedisURL           string
-	UseWarmPool        bool
-	MaxActiveSessions  int
-	IdleTimeout        time.Duration // Auto-pause sessions after this duration of inactivity (0 = disabled)
+	GitHubCopilotToken string // GitHub PAT with Copilot scope (for Copilot SDK only)
+
+	// GitHub Copilot OAuth tokens (for OpenCode provider; obtained via device-flow)
+	GitHubCopilotOAuthAccessToken  string
+	GitHubCopilotOAuthRefreshToken string
+	GitHubCopilotOAuthTokenExpires string // Unix timestamp string, "0" = no expiry
+	K8sNamespace                   string
+	AgentImage                     string
+	SandboxTemplate                string
+	DefaultCPUs                    int
+	DefaultMemoryMB                int
+	RedisURL                       string
+	UseWarmPool                    bool
+	MaxActiveSessions              int
+	IdleTimeout                    time.Duration // Auto-pause sessions after this duration of inactivity (0 = disabled)
 
 	// Host resource limits for per-session resource validation
 	HostCPUs     int // Total CPUs on the host (for 50% limit validation)
@@ -54,24 +59,28 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		Port:                  getEnvInt("PORT", 3000),
-		AnthropicAPIKey:       getEnv("ANTHROPIC_API_KEY", ""),
-		OpenAIAPIKey:          getEnv("OPENAI_API_KEY", ""),
-		MistralAPIKey:         getEnv("MISTRAL_API_KEY", ""),
-		GitHubCopilotToken:    getEnv("GITHUB_COPILOT_TOKEN", ""),
-		K8sNamespace:          getEnv("K8S_NAMESPACE", "netclode"),
-		AgentImage:            getEnv("AGENT_IMAGE", "ghcr.io/angristan/netclode-agent:latest"),
-		SandboxTemplate:       getEnv("SANDBOX_TEMPLATE", "netclode-agent"),
-		DefaultCPUs:           getEnvInt("DEFAULT_CPUS", 4),
-		DefaultMemoryMB:       getEnvInt("DEFAULT_MEMORY_MB", 4096),
-		RedisURL:              getEnv("REDIS_URL", "redis://redis-sessions.netclode.svc.cluster.local:6379"),
-		UseWarmPool:           getEnvBool("WARM_POOL_ENABLED", true),
-		MaxActiveSessions:     getEnvInt("MAX_ACTIVE_SESSIONS", 5),
-		IdleTimeout:           time.Duration(getEnvInt("IDLE_TIMEOUT_MINUTES", 0)) * time.Minute, // 0 = disabled
-		HostCPUs:              getEnvInt("HOST_CPUS", 16),                                        // Default assumes 16-core host
-		HostMemoryMB:          getEnvInt("HOST_MEMORY_MB", 32768),                                // Default assumes 32GB host
-		CPUOvercommitRatio:    getEnvInt("CPU_OVERCOMMIT_RATIO", 1),                              // 1 = no overcommit
-		MemoryOvercommitRatio: getEnvInt("MEMORY_OVERCOMMIT_RATIO", 1),                           // 1 = no overcommit
+		Port:               getEnvInt("PORT", 3000),
+		AnthropicAPIKey:    getEnv("ANTHROPIC_API_KEY", ""),
+		OpenAIAPIKey:       getEnv("OPENAI_API_KEY", ""),
+		MistralAPIKey:      getEnv("MISTRAL_API_KEY", ""),
+		GitHubCopilotToken: getEnv("GITHUB_COPILOT_TOKEN", ""),
+
+		GitHubCopilotOAuthAccessToken:  getEnv("GITHUB_COPILOT_OAUTH_ACCESS_TOKEN", ""),
+		GitHubCopilotOAuthRefreshToken: getEnv("GITHUB_COPILOT_OAUTH_REFRESH_TOKEN", ""),
+		GitHubCopilotOAuthTokenExpires: getEnv("GITHUB_COPILOT_OAUTH_TOKEN_EXPIRES", "0"),
+		K8sNamespace:                   getEnv("K8S_NAMESPACE", "netclode"),
+		AgentImage:                     getEnv("AGENT_IMAGE", "ghcr.io/angristan/netclode-agent:latest"),
+		SandboxTemplate:                getEnv("SANDBOX_TEMPLATE", "netclode-agent"),
+		DefaultCPUs:                    getEnvInt("DEFAULT_CPUS", 4),
+		DefaultMemoryMB:                getEnvInt("DEFAULT_MEMORY_MB", 4096),
+		RedisURL:                       getEnv("REDIS_URL", "redis://redis-sessions.netclode.svc.cluster.local:6379"),
+		UseWarmPool:                    getEnvBool("WARM_POOL_ENABLED", true),
+		MaxActiveSessions:              getEnvInt("MAX_ACTIVE_SESSIONS", 5),
+		IdleTimeout:                    time.Duration(getEnvInt("IDLE_TIMEOUT_MINUTES", 0)) * time.Minute, // 0 = disabled
+		HostCPUs:                       getEnvInt("HOST_CPUS", 16),                                        // Default assumes 16-core host
+		HostMemoryMB:                   getEnvInt("HOST_MEMORY_MB", 32768),                                // Default assumes 32GB host
+		CPUOvercommitRatio:             getEnvInt("CPU_OVERCOMMIT_RATIO", 1),                              // 1 = no overcommit
+		MemoryOvercommitRatio:          getEnvInt("MEMORY_OVERCOMMIT_RATIO", 1),                           // 1 = no overcommit
 
 		// Codex OAuth tokens
 		CodexAccessToken:  getEnv("CODEX_ACCESS_TOKEN", ""),

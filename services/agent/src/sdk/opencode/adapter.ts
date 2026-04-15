@@ -40,11 +40,44 @@ export class OpenCodeAdapter implements SDKAdapter {
     await this.startServer();
   }
 
+  private async writeOpencodeAuthFile(): Promise<void> {
+    const refreshToken = this.config?.githubCopilotOAuthRefreshToken;
+    if (!refreshToken) return;
+
+    const authDir = "/agent/.local/share/opencode";
+    const authFile = path.join(authDir, "auth.json");
+
+    // Write placeholders instead of real tokens so that the secret-proxy can inject
+    // the real OAuth access token into outbound request headers. The placeholder value
+    // matches the one registered in the control-plane allowlist for SDK_TYPE_OPENCODE
+    // (secretKey: "github_copilot_oauth", placeholder: "NETCLODE_PLACEHOLDER_github_copilot_oauth").
+    // When opencode sends "Authorization: Bearer NETCLODE_PLACEHOLDER_github_copilot_oauth" to
+    // api.githubcopilot.com, the secret-proxy replaces the placeholder with the real OAuth token.
+    const authContent = {
+      "github-copilot": {
+        type: "oauth",
+        refresh: "NETCLODE_PLACEHOLDER_github_copilot_oauth",
+        access: "NETCLODE_PLACEHOLDER_github_copilot_oauth",
+        expires: 0,
+      },
+    };
+
+    try {
+      await fs.mkdir(authDir, { recursive: true });
+      await fs.writeFile(authFile, JSON.stringify(authContent, null, 2), { encoding: "utf-8", mode: 0o600 });
+      console.log("[opencode-adapter] Wrote opencode auth.json for GitHub Copilot (OAuth, placeholder tokens)");
+    } catch (error) {
+      console.error("[opencode-adapter] Failed to write opencode auth.json:", error);
+    }
+  }
+
   private async startServer(): Promise<void> {
     if (this.server) {
       console.log("[opencode-adapter] Server already running at", this.server.url);
       return;
     }
+
+    await this.writeOpencodeAuthFile();
 
     const startTime = Date.now();
     console.log("[opencode-adapter] Starting opencode serve...");
@@ -56,8 +89,8 @@ export class OpenCodeAdapter implements SDKAdapter {
     const [providerId, modelName] = model.includes("/") ? model.split("/", 2) : ["anthropic", model];
     const thinkingBudget = thinkingLevel === "max" ? 32000 : thinkingLevel === "high" ? 16000 : 0;
 
-    // Check if this is a Zen model (provider ID is "opencode")
     const isZenModel = providerId === "opencode";
+    const isCopilotModel = providerId === "github-copilot";
 
     let providerConfig: Record<string, unknown> = {};
 
@@ -127,8 +160,8 @@ export class OpenCodeAdapter implements SDKAdapter {
         // Z.AI API key for GLM-4.7 models (models.dev uses ZHIPU_API_KEY)
         ...(this.config?.zaiApiKey && { ZHIPU_API_KEY: this.config.zaiApiKey }),
         OPENCODE_DISABLE_DEFAULT_PLUGINS: "true",
-        // Only disable models fetch if NOT using Zen (Zen needs models.dev to work)
-        ...(!isZenModel && { OPENCODE_DISABLE_MODELS_FETCH: "true" }),
+        // Disable models fetch except for providers that discover models dynamically
+        ...(!isZenModel && !isCopilotModel && { OPENCODE_DISABLE_MODELS_FETCH: "true" }),
       },
       stdio: ["pipe", "pipe", "pipe"],
       cwd: WORKSPACE_DIR,
@@ -286,6 +319,14 @@ export class OpenCodeAdapter implements SDKAdapter {
 
     const eventUrl = `${this.server.url}/event?directory=${encodeURIComponent(WORKSPACE_DIR)}`;
 
+    let resolveConnected!: () => void;
+    let rejectConnected!: (err: Error) => void;
+    let sseConnectionEstablished = false;
+    const sseConnected = new Promise<void>((res, rej) => {
+      resolveConnected = res;
+      rejectConnected = rej;
+    });
+
     const processEvents = async () => {
       try {
         const eventResponse = await fetch(eventUrl, {
@@ -293,8 +334,13 @@ export class OpenCodeAdapter implements SDKAdapter {
         });
 
         if (!eventResponse.ok || !eventResponse.body) {
-          throw new Error(`Failed to subscribe to events: ${eventResponse.statusText}`);
+          const err = new Error(`Failed to subscribe to events: ${eventResponse.statusText}`);
+          rejectConnected(err);
+          throw err;
         }
+
+        sseConnectionEstablished = true;
+        resolveConnected();
 
         const reader = eventResponse.body.getReader();
         const decoder = new TextDecoder();
@@ -340,6 +386,9 @@ export class OpenCodeAdapter implements SDKAdapter {
         reader.releaseLock();
       } catch (error) {
         console.error("[opencode-adapter] Event stream error:", error);
+        if (!sseConnectionEstablished) {
+          rejectConnected(error instanceof Error ? error : new Error(String(error)));
+        }
         const errorEvent: PromptEvent = {
           type: "error",
           message: `Event stream error: ${error instanceof Error ? error.message : String(error)}`,
@@ -360,6 +409,18 @@ export class OpenCodeAdapter implements SDKAdapter {
     };
 
     const eventProcessor = processEvents();
+
+    try {
+      await sseConnected;
+    } catch (error) {
+      yield {
+        type: "error",
+        message: `Failed to connect to OpenCode event stream: ${error instanceof Error ? error.message : String(error)}`,
+        retryable: false,
+      };
+      return;
+    }
+    console.log("[opencode-adapter] SSE connection established, sending prompt");
 
     try {
       const promptResponse = await fetch(`${this.server.url}/session/${ocSessionId}/prompt_async`, {

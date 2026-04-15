@@ -72,12 +72,13 @@ export function translateMessagePartUpdated(
   }
 
   switch (part.type) {
-    case "text":
-      return translateTextPart(part, delta, state);
-    case "reasoning":
-      return translateReasoningPart(part, delta);
     case "tool":
       return translateToolPart(part, state);
+    case "reasoning":
+      return translateReasoningPart(part, delta);
+    case "text":
+    case "step-start":
+    case "step-finish":
     default:
       return null;
   }
@@ -323,11 +324,40 @@ export function translateEvent(
   const props = event.properties || {};
 
   switch (event.type) {
-    case "message.part.updated": {
-      const part = props.part as Record<string, unknown> | undefined;
+    case "message.part.delta": {
+      // OpenCode streams text deltas as separate events:
+      // { type: "message.part.delta", properties: { messageID, partID, field, delta } }
+      // Only handle text field deltas for assistant messages.
+      const messageId = props.messageID as string | undefined;
+      const field = props.field as string | undefined;
       const delta = props.delta as string | undefined;
+      const partId = props.partID as string | undefined;
+
+      if (field !== "text" || !delta || !messageId) return null;
+      if (!state.assistantMessageIds.has(messageId)) return null;
+
+      // Track part ID for message ID continuity
+      if (partId !== state.currentTextPartId) {
+        state.currentTextPartId = partId || null;
+        state.currentTextMessageId = `msg_${Date.now()}_${++state.textMessageIdCounter}`;
+      }
+
+      return {
+        type: "textDelta",
+        content: delta,
+        partial: true,
+        messageId: state.currentTextMessageId || undefined,
+      };
+    }
+
+    case "message.part.updated": {
+      // Used for tool state transitions (pending → running → completed/error).
+      // Text content arrives via message.part.delta instead.
+      const part = props.part as Record<string, unknown> | undefined;
       if (!part) return null;
-      return translateMessagePartUpdated(part, delta, state);
+      // Only pass through for tool parts — text parts have no delta here
+      if (part.type !== "tool") return null;
+      return translateMessagePartUpdated(part, undefined, state);
     }
 
     case "message.updated": {

@@ -570,6 +570,34 @@ public struct Netclode_V1_SessionConfig: @unchecked Sendable {
   /// Clears the value of `zaiApiKey`. Subsequent reads from it will return its default value.
   public mutating func clearZaiApiKey() {_uniqueStorage()._zaiApiKey = nil}
 
+  /// GitHub Copilot OAuth tokens for OpenCode SDK (written to auth.json, not exposed to proxy)
+  public var githubCopilotOauthAccessToken: String {
+    get {_storage._githubCopilotOauthAccessToken ?? String()}
+    set {_uniqueStorage()._githubCopilotOauthAccessToken = newValue}
+  }
+  /// Returns true if `githubCopilotOauthAccessToken` has been explicitly set.
+  public var hasGithubCopilotOauthAccessToken: Bool {_storage._githubCopilotOauthAccessToken != nil}
+  /// Clears the value of `githubCopilotOauthAccessToken`. Subsequent reads from it will return its default value.
+  public mutating func clearGithubCopilotOauthAccessToken() {_uniqueStorage()._githubCopilotOauthAccessToken = nil}
+
+  public var githubCopilotOauthRefreshToken: String {
+    get {_storage._githubCopilotOauthRefreshToken ?? String()}
+    set {_uniqueStorage()._githubCopilotOauthRefreshToken = newValue}
+  }
+  /// Returns true if `githubCopilotOauthRefreshToken` has been explicitly set.
+  public var hasGithubCopilotOauthRefreshToken: Bool {_storage._githubCopilotOauthRefreshToken != nil}
+  /// Clears the value of `githubCopilotOauthRefreshToken`. Subsequent reads from it will return its default value.
+  public mutating func clearGithubCopilotOauthRefreshToken() {_uniqueStorage()._githubCopilotOauthRefreshToken = nil}
+
+  public var githubCopilotOauthTokenExpires: String {
+    get {_storage._githubCopilotOauthTokenExpires ?? String()}
+    set {_uniqueStorage()._githubCopilotOauthTokenExpires = newValue}
+  }
+  /// Returns true if `githubCopilotOauthTokenExpires` has been explicitly set.
+  public var hasGithubCopilotOauthTokenExpires: Bool {_storage._githubCopilotOauthTokenExpires != nil}
+  /// Clears the value of `githubCopilotOauthTokenExpires`. Subsequent reads from it will return its default value.
+  public mutating func clearGithubCopilotOauthTokenExpires() {_uniqueStorage()._githubCopilotOauthTokenExpires = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1137,7 +1165,7 @@ extension Netclode_V1_SessionSummary: SwiftProtobuf.Message, SwiftProtobuf._Mess
 
 extension Netclode_V1_SessionConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionConfig"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}workspace_dir\0\u{3}github_token\0\u{1}repos\0\u{3}repo_access\0\u{3}control_plane_url\0\u{3}sdk_type\0\u{1}model\0\u{3}copilot_backend\0\u{3}github_copilot_token\0\u{3}codex_access_token\0\u{3}codex_id_token\0\u{3}openai_api_key\0\u{3}codex_refresh_token\0\u{3}reasoning_effort\0\u{3}mistral_api_key\0\u{3}ollama_url\0\u{3}opencode_api_key\0\u{3}zai_api_key\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}workspace_dir\0\u{3}github_token\0\u{1}repos\0\u{3}repo_access\0\u{3}control_plane_url\0\u{3}sdk_type\0\u{1}model\0\u{3}copilot_backend\0\u{3}github_copilot_token\0\u{3}codex_access_token\0\u{3}codex_id_token\0\u{3}openai_api_key\0\u{3}codex_refresh_token\0\u{3}reasoning_effort\0\u{3}mistral_api_key\0\u{3}ollama_url\0\u{3}opencode_api_key\0\u{3}zai_api_key\0\u{3}github_copilot_oauth_access_token\0\u{3}github_copilot_oauth_refresh_token\0\u{3}github_copilot_oauth_token_expires\0")
 
   fileprivate class _StorageClass {
     var _sessionID: String = String()
@@ -1159,6 +1187,9 @@ extension Netclode_V1_SessionConfig: SwiftProtobuf.Message, SwiftProtobuf._Messa
     var _ollamaURL: String? = nil
     var _opencodeApiKey: String? = nil
     var _zaiApiKey: String? = nil
+    var _githubCopilotOauthAccessToken: String? = nil
+    var _githubCopilotOauthRefreshToken: String? = nil
+    var _githubCopilotOauthTokenExpires: String? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -1188,6 +1219,9 @@ extension Netclode_V1_SessionConfig: SwiftProtobuf.Message, SwiftProtobuf._Messa
       _ollamaURL = source._ollamaURL
       _opencodeApiKey = source._opencodeApiKey
       _zaiApiKey = source._zaiApiKey
+      _githubCopilotOauthAccessToken = source._githubCopilotOauthAccessToken
+      _githubCopilotOauthRefreshToken = source._githubCopilotOauthRefreshToken
+      _githubCopilotOauthTokenExpires = source._githubCopilotOauthTokenExpires
     }
   }
 
@@ -1225,6 +1259,9 @@ extension Netclode_V1_SessionConfig: SwiftProtobuf.Message, SwiftProtobuf._Messa
         case 17: try { try decoder.decodeSingularStringField(value: &_storage._ollamaURL) }()
         case 18: try { try decoder.decodeSingularStringField(value: &_storage._opencodeApiKey) }()
         case 19: try { try decoder.decodeSingularStringField(value: &_storage._zaiApiKey) }()
+        case 20: try { try decoder.decodeSingularStringField(value: &_storage._githubCopilotOauthAccessToken) }()
+        case 21: try { try decoder.decodeSingularStringField(value: &_storage._githubCopilotOauthRefreshToken) }()
+        case 22: try { try decoder.decodeSingularStringField(value: &_storage._githubCopilotOauthTokenExpires) }()
         default: break
         }
       }
@@ -1294,6 +1331,15 @@ extension Netclode_V1_SessionConfig: SwiftProtobuf.Message, SwiftProtobuf._Messa
       try { if let v = _storage._zaiApiKey {
         try visitor.visitSingularStringField(value: v, fieldNumber: 19)
       } }()
+      try { if let v = _storage._githubCopilotOauthAccessToken {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 20)
+      } }()
+      try { if let v = _storage._githubCopilotOauthRefreshToken {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 21)
+      } }()
+      try { if let v = _storage._githubCopilotOauthTokenExpires {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 22)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -1322,6 +1368,9 @@ extension Netclode_V1_SessionConfig: SwiftProtobuf.Message, SwiftProtobuf._Messa
         if _storage._ollamaURL != rhs_storage._ollamaURL {return false}
         if _storage._opencodeApiKey != rhs_storage._opencodeApiKey {return false}
         if _storage._zaiApiKey != rhs_storage._zaiApiKey {return false}
+        if _storage._githubCopilotOauthAccessToken != rhs_storage._githubCopilotOauthAccessToken {return false}
+        if _storage._githubCopilotOauthRefreshToken != rhs_storage._githubCopilotOauthRefreshToken {return false}
+        if _storage._githubCopilotOauthTokenExpires != rhs_storage._githubCopilotOauthTokenExpires {return false}
         return true
       }
       if !storagesAreEqual {return false}

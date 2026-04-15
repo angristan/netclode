@@ -103,6 +103,10 @@ message SessionConfig {
   optional string ollama_url = 17;     // URL for local Ollama inference (e.g., "http://ollama.netclode.svc.cluster.local:11434")
   optional string opencode_api_key = 18; // OpenCode Zen API key (for paid models, empty/"public" = free tier only)
   optional string zai_api_key = 19;    // Z.AI API key (for GLM-4.7 models via Anthropic-compatible endpoint)
+  // GitHub Copilot OAuth tokens for OpenCode SDK (written to auth.json, not exposed to proxy)
+  optional string github_copilot_oauth_access_token = 20;
+  optional string github_copilot_oauth_refresh_token = 21;
+  optional string github_copilot_oauth_token_expires = 22;
 }
 
 // ============================================================================

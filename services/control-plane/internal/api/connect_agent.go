@@ -222,6 +222,15 @@ func (h *ConnectAgentServiceHandler) Connect(ctx context.Context, stream *connec
 	if config.OllamaURL != "" {
 		sessionConfig.OllamaUrl = &config.OllamaURL
 	}
+	if config.GitHubCopilotOAuthAccessToken != "" {
+		sessionConfig.GithubCopilotOauthAccessToken = &config.GitHubCopilotOAuthAccessToken
+	}
+	if config.GitHubCopilotOAuthRefreshToken != "" {
+		sessionConfig.GithubCopilotOauthRefreshToken = &config.GitHubCopilotOAuthRefreshToken
+	}
+	if config.GitHubCopilotOAuthTokenExpires != "" {
+		sessionConfig.GithubCopilotOauthTokenExpires = &config.GitHubCopilotOAuthTokenExpires
+	}
 
 	if err := conn.send(&v1.ControlPlaneMessage{
 		Message: &v1.ControlPlaneMessage_Registered{
@@ -516,6 +525,15 @@ func (c *AgentConnection) AssignSession(sessionID string, config *session.AgentS
 	}
 	if config.OllamaURL != "" {
 		sessionConfig.OllamaUrl = &config.OllamaURL
+	}
+	if config.GitHubCopilotOAuthAccessToken != "" {
+		sessionConfig.GithubCopilotOauthAccessToken = &config.GitHubCopilotOAuthAccessToken
+	}
+	if config.GitHubCopilotOAuthRefreshToken != "" {
+		sessionConfig.GithubCopilotOauthRefreshToken = &config.GitHubCopilotOAuthRefreshToken
+	}
+	if config.GitHubCopilotOAuthTokenExpires != "" {
+		sessionConfig.GithubCopilotOauthTokenExpires = &config.GitHubCopilotOAuthTokenExpires
 	}
 
 	slog.Info("Pushing session assignment to warm agent", "sessionID", sessionID, "podName", c.podName)

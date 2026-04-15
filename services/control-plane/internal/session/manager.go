@@ -31,18 +31,21 @@ type SessionUpdateCallback func(session *pb.Session)
 
 // AgentSessionConfig contains typed configuration for an agent session.
 type AgentSessionConfig struct {
-	SessionID         string
-	GitHubToken       string // For git credentials (from GitHub App) - not proxied, used in git URLs
-	Repos             []string
-	RepoAccess        *pb.RepoAccess
-	SdkType           *pb.SdkType
-	Model             string
-	CopilotBackend    *pb.CopilotBackend
-	CodexAccessToken  string // For Codex OAuth mode - written to ~/.codex/auth.json, can't be proxied
-	CodexIdToken      string // For Codex OAuth mode - written to ~/.codex/auth.json, can't be proxied
-	CodexRefreshToken string // For Codex OAuth mode - written to ~/.codex/auth.json, can't be proxied
-	ReasoningEffort   string // For Codex reasoning effort (low, medium, high)
-	OllamaURL         string // For local Ollama inference
+	SessionID                      string
+	GitHubToken                    string
+	Repos                          []string
+	RepoAccess                     *pb.RepoAccess
+	SdkType                        *pb.SdkType
+	Model                          string
+	CopilotBackend                 *pb.CopilotBackend
+	CodexAccessToken               string
+	CodexIdToken                   string
+	CodexRefreshToken              string
+	ReasoningEffort                string
+	OllamaURL                      string
+	GitHubCopilotOAuthAccessToken  string
+	GitHubCopilotOAuthRefreshToken string
+	GitHubCopilotOAuthTokenExpires string
 }
 
 // AgentConnection represents a connected agent that can receive commands.
@@ -461,7 +464,7 @@ func (m *Manager) createSandboxDirect(ctx context.Context, sessionID string, rep
 		}
 	}
 
-	// Pass GitHub Copilot token if configured
+	// Pass GitHub Copilot token if configured (for Copilot SDK)
 	if m.config.GitHubCopilotToken != "" {
 		env["GITHUB_COPILOT_TOKEN"] = m.config.GitHubCopilotToken
 	}
@@ -1702,6 +1705,12 @@ func (m *Manager) GetSessionConfig(ctx context.Context, sessionID string) (*Agen
 		OllamaURL:      m.config.OllamaURL,
 	}
 
+	if state.Session.SdkType != nil && *state.Session.SdkType == pb.SdkType_SDK_TYPE_OPENCODE {
+		config.GitHubCopilotOAuthAccessToken = m.config.GitHubCopilotOAuthAccessToken
+		config.GitHubCopilotOAuthRefreshToken = m.config.GitHubCopilotOAuthRefreshToken
+		config.GitHubCopilotOAuthTokenExpires = m.config.GitHubCopilotOAuthTokenExpires
+	}
+
 	if state.Session.Model != nil {
 		model := *state.Session.Model
 		config.Model = model
@@ -2279,10 +2288,14 @@ func (m *Manager) getAllowedSecretForHost(sdkType pb.SdkType, host string) (secr
 			{hosts: []string{"openrouter.ai", "api.openrouter.ai"}, secretKey: "opencode", placeholder: "NETCLODE_PLACEHOLDER_opencode"},
 			{hosts: []string{"api.opencode.ai"}, secretKey: "opencode", placeholder: "NETCLODE_PLACEHOLDER_opencode"},
 			{hosts: []string{"open.bigmodel.cn"}, secretKey: "zai", placeholder: "NETCLODE_PLACEHOLDER_zai"},
+			// GitHub Copilot via OAuth (device-flow tokens, not PAT) — secretKey is separate from the PAT
+			// used by the Copilot SDK so that the two are never confused.
+			{hosts: []string{"api.github.com", "api.githubcopilot.com", "api.individual.githubcopilot.com", "copilot-proxy.githubusercontent.com"}, secretKey: "github_copilot_oauth", placeholder: "NETCLODE_PLACEHOLDER_github_copilot_oauth"},
 		}
 
 	case pb.SdkType_SDK_TYPE_COPILOT:
 		allowedMappings = []hostMapping{
+			// GitHub Copilot SDK uses a PAT (fine-grained token with copilot scope) — different from OAuth.
 			{hosts: []string{"api.github.com", "copilot-proxy.githubusercontent.com", "api.individual.githubcopilot.com"}, secretKey: "github_copilot", placeholder: "NETCLODE_PLACEHOLDER_github_copilot"},
 			{hosts: []string{"api.anthropic.com"}, secretKey: "anthropic", placeholder: "NETCLODE_PLACEHOLDER_anthropic"},
 		}
@@ -2330,8 +2343,7 @@ func (m *Manager) ListModels(ctx context.Context, sdkType pb.SdkType, copilotBac
 	case pb.SdkType_SDK_TYPE_OPENCODE:
 		return m.fetchOpenCodeModels(ctx)
 	case pb.SdkType_SDK_TYPE_COPILOT:
-		// Return combined list of GitHub Copilot + Anthropic (BYOK) models
-		return m.fetchCopilotModels(ctx)
+		return m.fetchCopilotModels(ctx, m.config.GitHubCopilotToken)
 	case pb.SdkType_SDK_TYPE_CODEX:
 		// Return OpenAI models with "gpt-codex" family
 		return m.fetchCodexModels(ctx)
@@ -2494,8 +2506,15 @@ func (m *Manager) fetchOpenCodeModels(ctx context.Context) []*pb.ModelInfo {
 		models = append(models, zaiModels...)
 	}
 
+	// Add GitHub Copilot models if GITHUB_COPILOT_OAUTH_ACCESS_TOKEN is set (OAuth, not PAT)
+	if m.config.GitHubCopilotOAuthAccessToken != "" {
+		copilotModels := m.fetchCopilotModels(ctx, m.config.GitHubCopilotOAuthAccessToken)
+		slog.InfoContext(ctx, "Fetched Copilot models for OpenCode", "count", len(copilotModels))
+		models = append(models, copilotModels...)
+	}
+
 	if len(models) == 0 {
-		slog.WarnContext(ctx, "No OpenCode credentials configured (need ANTHROPIC_API_KEY, OPENAI_API_KEY, MISTRAL_API_KEY, OPENCODE_API_KEY, ZAI_API_KEY, or OLLAMA_URL)")
+		slog.WarnContext(ctx, "No OpenCode credentials configured (need ANTHROPIC_API_KEY, OPENAI_API_KEY, MISTRAL_API_KEY, OPENCODE_API_KEY, ZAI_API_KEY, OLLAMA_URL, or GITHUB_COPILOT_TOKEN)")
 	}
 
 	slog.InfoContext(ctx, "fetchOpenCodeModels returning", "totalModels", len(models))
@@ -2719,15 +2738,15 @@ func (m *Manager) fetchOllamaModels(ctx context.Context) []*pb.ModelInfo {
 	return models
 }
 
-// fetchCopilotModels fetches combined GitHub Copilot + Anthropic models
-func (m *Manager) fetchCopilotModels(ctx context.Context) []*pb.ModelInfo {
-	// Check which credentials are available
-	hasGitHubCopilot := m.config.GitHubCopilotToken != ""
+// fetchCopilotModels fetches combined GitHub Copilot + Anthropic models.
+// copilotToken is the bearer token used to gate Copilot model inclusion;
+// it may be a PAT (Copilot SDK) or an OAuth access token (OpenCode).
+func (m *Manager) fetchCopilotModels(ctx context.Context, copilotToken string) []*pb.ModelInfo {
+	hasCopilotToken := copilotToken != ""
 	hasAnthropicKey := m.config.AnthropicAPIKey != ""
 
-	// If neither credential is available, return empty list
-	if !hasGitHubCopilot && !hasAnthropicKey {
-		slog.WarnContext(ctx, "No Copilot credentials configured (need GITHUB_COPILOT_TOKEN or ANTHROPIC_API_KEY)")
+	if !hasCopilotToken && !hasAnthropicKey {
+		slog.WarnContext(ctx, "No Copilot credentials configured (need a copilot token or ANTHROPIC_API_KEY)")
 		return nil
 	}
 
@@ -2735,31 +2754,30 @@ func (m *Manager) fetchCopilotModels(ctx context.Context) []*pb.ModelInfo {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://models.dev/api.json", nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to create models.dev request", "error", err)
-		return m.getCopilotModelsFallback()
+		return m.getCopilotModelsFallback(copilotToken)
 	}
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to fetch from models.dev", "error", err)
-		return m.getCopilotModelsFallback()
+		return m.getCopilotModelsFallback(copilotToken)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		slog.ErrorContext(ctx, "models.dev API error", "status", resp.StatusCode)
-		return m.getCopilotModelsFallback()
+		return m.getCopilotModelsFallback(copilotToken)
 	}
 
 	var data modelsDevResponse
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		slog.ErrorContext(ctx, "Failed to decode models.dev response", "error", err)
-		return m.getCopilotModelsFallback()
+		return m.getCopilotModelsFallback(copilotToken)
 	}
 
 	var models []*pb.ModelInfo
 
-	// Add GitHub Copilot models
-	if hasGitHubCopilot {
+	if hasCopilotToken {
 		if copilotData, ok := data["github-copilot"]; ok {
 			for _, model := range copilotData.Models {
 				capabilities := []string{"chat", "code"}
@@ -2774,7 +2792,7 @@ func (m *Manager) fetchCopilotModels(ctx context.Context) []*pb.ModelInfo {
 				}
 
 				models = append(models, &pb.ModelInfo{
-					Id:           model.ID,
+					Id:           "github-copilot/" + model.ID,
 					Name:         model.Name,
 					Provider:     strPtr("Copilot"),
 					Capabilities: capabilities,
@@ -2830,16 +2848,13 @@ func getModelsFallback(provider string) []*pb.ModelInfo {
 	}
 }
 
-// getCopilotModelsFallback returns fallback models when models.dev is unavailable
-// Models are filtered based on available credentials
-func (m *Manager) getCopilotModelsFallback() []*pb.ModelInfo {
-	hasGitHubCopilot := m.config.GitHubCopilotToken != ""
+func (m *Manager) getCopilotModelsFallback(copilotToken string) []*pb.ModelInfo {
+	hasCopilotToken := copilotToken != ""
 	hasAnthropicKey := m.config.AnthropicAPIKey != ""
 
 	var models []*pb.ModelInfo
 
-	// GitHub Copilot models (require GITHUB_COPILOT_TOKEN)
-	if hasGitHubCopilot {
+	if hasCopilotToken {
 		models = append(models,
 			&pb.ModelInfo{Id: "claude-sonnet-4.5", Name: "Claude Sonnet 4.5", Provider: strPtr("Copilot"), Capabilities: []string{"chat", "vision", "code", "reasoning"}},
 			&pb.ModelInfo{Id: "claude-sonnet-4", Name: "Claude Sonnet 4", Provider: strPtr("Copilot"), Capabilities: []string{"chat", "vision", "code"}},

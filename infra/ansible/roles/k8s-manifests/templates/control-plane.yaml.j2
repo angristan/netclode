@@ -39,12 +39,29 @@ spec:
                 secretKeyRef:
                   name: netclode-secrets
                   key: anthropic-api-key
-            # GitHub Copilot token for Copilot SDK (optional)
             - name: GITHUB_COPILOT_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: netclode-secrets
                   key: github-copilot-token
+                  optional: true
+            - name: GITHUB_COPILOT_OAUTH_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: netclode-secrets
+                  key: github-copilot-oauth-access-token
+                  optional: true
+            - name: GITHUB_COPILOT_OAUTH_REFRESH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: netclode-secrets
+                  key: github-copilot-oauth-refresh-token
+                  optional: true
+            - name: GITHUB_COPILOT_OAUTH_TOKEN_EXPIRES
+              valueFrom:
+                secretKeyRef:
+                  name: netclode-secrets
+                  key: github-copilot-oauth-token-expires
                   optional: true
             # GitHub App integration (optional)
             - name: GITHUB_APP_ID

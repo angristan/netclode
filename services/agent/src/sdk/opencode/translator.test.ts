@@ -59,10 +59,47 @@ describe("OpenCode Translator", () => {
   });
 
   describe("translateMessagePartUpdated - text", () => {
-    it("translates text delta", () => {
+    it("returns null for text parts (text arrives via message.part.delta)", () => {
       const result = translateMessagePartUpdated(
         { type: "text", id: "part_1" },
         "Hello ",
+        state
+      );
+      expect(result).toBeNull();
+    });
+
+    it("returns null for step-start parts", () => {
+      const result = translateMessagePartUpdated(
+        { type: "step-start", id: "part_1" },
+        undefined,
+        state
+      );
+      expect(result).toBeNull();
+    });
+
+    it("returns null for step-finish parts", () => {
+      const result = translateMessagePartUpdated(
+        { type: "step-finish", id: "part_1" },
+        undefined,
+        state
+      );
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("translateEvent - message.part.delta", () => {
+    it("translates text delta for assistant message", () => {
+      state.assistantMessageIds.add("msg_assistant");
+      const result = translateEvent(
+        {
+          type: "message.part.delta",
+          properties: {
+            messageID: "msg_assistant",
+            partID: "part_1",
+            field: "text",
+            delta: "Hello ",
+          },
+        },
         state
       );
       expect(result?.type).toBe("textDelta");
@@ -70,73 +107,88 @@ describe("OpenCode Translator", () => {
       expect((result as { partial: boolean }).partial).toBe(true);
     });
 
-    it("generates message ID for text part", () => {
-      const result = translateMessagePartUpdated(
-        { type: "text", id: "part_1" },
-        "Hello",
+    it("generates message ID for text delta", () => {
+      state.assistantMessageIds.add("msg_assistant");
+      const result = translateEvent(
+        {
+          type: "message.part.delta",
+          properties: { messageID: "msg_assistant", partID: "part_1", field: "text", delta: "Hi" },
+        },
         state
       );
       expect((result as { messageId: string }).messageId).toMatch(/^msg_\d+_\d+$/);
     });
 
-    it("reuses message ID for same part", () => {
-      const result1 = translateMessagePartUpdated(
-        { type: "text", id: "part_1" },
-        "Hello",
+    it("reuses message ID for same partID", () => {
+      state.assistantMessageIds.add("msg_assistant");
+      const r1 = translateEvent(
+        {
+          type: "message.part.delta",
+          properties: { messageID: "msg_assistant", partID: "part_1", field: "text", delta: "Hello" },
+        },
         state
       );
-      const result2 = translateMessagePartUpdated(
-        { type: "text", id: "part_1" },
-        " world",
+      const r2 = translateEvent(
+        {
+          type: "message.part.delta",
+          properties: { messageID: "msg_assistant", partID: "part_1", field: "text", delta: " world" },
+        },
         state
       );
-      expect((result1 as { messageId: string }).messageId).toBe(
-        (result2 as { messageId: string }).messageId
-      );
+      expect((r1 as { messageId: string }).messageId).toBe((r2 as { messageId: string }).messageId);
     });
 
-    it("generates new message ID for different part", () => {
-      const result1 = translateMessagePartUpdated(
-        { type: "text", id: "part_1" },
-        "Hello",
+    it("generates new message ID for different partID", () => {
+      state.assistantMessageIds.add("msg_assistant");
+      const r1 = translateEvent(
+        {
+          type: "message.part.delta",
+          properties: { messageID: "msg_assistant", partID: "part_1", field: "text", delta: "Hello" },
+        },
         state
       );
-      const result2 = translateMessagePartUpdated(
-        { type: "text", id: "part_2" },
-        "world",
+      const r2 = translateEvent(
+        {
+          type: "message.part.delta",
+          properties: { messageID: "msg_assistant", partID: "part_2", field: "text", delta: "world" },
+        },
         state
       );
-      expect((result1 as { messageId: string }).messageId).not.toBe(
-        (result2 as { messageId: string }).messageId
-      );
+      expect((r1 as { messageId: string }).messageId).not.toBe((r2 as { messageId: string }).messageId);
     });
 
-    it("returns null for text without delta", () => {
-      const result = translateMessagePartUpdated(
-        { type: "text", id: "part_1", text: "accumulated" },
-        undefined,
+    it("drops delta for non-assistant message", () => {
+      const result = translateEvent(
+        {
+          type: "message.part.delta",
+          properties: { messageID: "msg_user", partID: "part_1", field: "text", delta: "Hello" },
+        },
         state
       );
       expect(result).toBeNull();
     });
 
-    it("filters non-assistant messages", () => {
-      const result = translateMessagePartUpdated(
-        { type: "text", id: "part_1", messageID: "user_msg" },
-        "Hello",
+    it("drops delta for non-text fields", () => {
+      state.assistantMessageIds.add("msg_assistant");
+      const result = translateEvent(
+        {
+          type: "message.part.delta",
+          properties: { messageID: "msg_assistant", partID: "part_1", field: "reasoning", delta: "thinking..." },
+        },
         state
       );
       expect(result).toBeNull();
     });
 
-    it("allows assistant messages", () => {
-      state.assistantMessageIds.add("assistant_msg");
-      const result = translateMessagePartUpdated(
-        { type: "text", id: "part_1", messageID: "assistant_msg" },
-        "Hello",
+    it("drops delta when messageID missing", () => {
+      const result = translateEvent(
+        {
+          type: "message.part.delta",
+          properties: { partID: "part_1", field: "text", delta: "Hello" },
+        },
         state
       );
-      expect(result?.type).toBe("textDelta");
+      expect(result).toBeNull();
     });
   });
 
@@ -394,7 +446,7 @@ describe("OpenCode Translator", () => {
   });
 
   describe("translateEvent", () => {
-    it("handles message.part.updated", () => {
+    it("returns null for message.part.updated with text part (text arrives via message.part.delta)", () => {
       const result = translateEvent(
         {
           type: "message.part.updated",
@@ -402,7 +454,28 @@ describe("OpenCode Translator", () => {
         },
         state
       );
-      expect(result?.type).toBe("textDelta");
+      expect(result).toBeNull();
+    });
+
+    it("handles message.part.updated for tool part (running state emits toolStart)", () => {
+      state.assistantMessageIds.add("msg_assistant");
+      const result = translateEvent(
+        {
+          type: "message.part.updated",
+          properties: {
+            part: {
+              type: "tool",
+              id: "part_tool_1",
+              tool: "Read",
+              callID: "call_1",
+              messageID: "msg_assistant",
+              state: { status: "running", input: { file_path: "/foo.ts" } },
+            },
+          },
+        },
+        state
+      );
+      expect(result?.type).toBe("toolStart");
     });
 
     it("handles message.updated", () => {
