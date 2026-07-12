@@ -14,6 +14,8 @@ type Config struct {
 
 	// ControlPlaneURL is the URL of the control-plane for auth validation.
 	ControlPlaneURL string
+	// ControlPlaneTokenPath contains the projected identity token for this workload.
+	ControlPlaneTokenPath string
 
 	// CAPath is the path to the CA certificate file.
 	CAPath string
@@ -32,12 +34,13 @@ type Config struct {
 // Load loads configuration from environment variables.
 func Load() Config {
 	return Config{
-		ListenAddr:      getEnv("LISTEN_ADDR", ":8080"),
-		ControlPlaneURL: getEnv("CONTROL_PLANE_URL", "http://control-plane.netclode.svc.cluster.local"),
-		CAPath:          getEnv("CA_CERT_PATH", "/etc/secret-proxy/ca.crt"),
-		CAKeyPath:       getEnv("CA_KEY_PATH", "/etc/secret-proxy/ca.key"),
-		SecretsPath:     getEnv("SECRETS_PATH", "/etc/secret-proxy/secrets.json"),
-		Verbose:         os.Getenv("VERBOSE") == "true",
+		ListenAddr:            getEnv("LISTEN_ADDR", ":8080"),
+		ControlPlaneURL:       getEnv("CONTROL_PLANE_URL", "http://control-plane-internal.netclode.svc.cluster.local:3002"),
+		ControlPlaneTokenPath: getEnv("CONTROL_PLANE_TOKEN_PATH", "/var/run/secrets/control-plane-auth/token"),
+		CAPath:                getEnv("CA_CERT_PATH", "/etc/secret-proxy/ca.crt"),
+		CAKeyPath:             getEnv("CA_KEY_PATH", "/etc/secret-proxy/ca.key"),
+		SecretsPath:           getEnv("SECRETS_PATH", "/etc/secret-proxy/secrets.json"),
+		Verbose:               os.Getenv("VERBOSE") == "true",
 	}
 }
 

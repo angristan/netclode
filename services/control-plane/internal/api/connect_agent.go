@@ -191,7 +191,7 @@ func (h *ConnectAgentServiceHandler) Connect(ctx context.Context, stream *connec
 	sessionConfig := &v1.SessionConfig{
 		SessionId:       sessionID,
 		WorkspaceDir:    "/workspace",
-		ControlPlaneUrl: "http://control-plane.netclode.svc.cluster.local",
+		ControlPlaneUrl: "http://control-plane-agent.netclode.svc.cluster.local:3001",
 		SdkType:         config.SdkType,
 		CopilotBackend:  config.CopilotBackend,
 	}
@@ -486,7 +486,7 @@ func (c *AgentConnection) AssignSession(sessionID string, config *session.AgentS
 	sessionConfig := &v1.SessionConfig{
 		SessionId:       sessionID,
 		WorkspaceDir:    "/workspace",
-		ControlPlaneUrl: "http://control-plane.netclode.svc.cluster.local",
+		ControlPlaneUrl: "http://control-plane-agent.netclode.svc.cluster.local:3001",
 		SdkType:         config.SdkType,
 		CopilotBackend:  config.CopilotBackend,
 	}

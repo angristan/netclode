@@ -17,6 +17,7 @@ go build -o genca ./cmd/genca
 |----------|---------|-------------|
 | `LISTEN_ADDR` | `:8080` | Address to listen on |
 | `CONTROL_PLANE_URL` | required | URL of control-plane for token validation |
+| `CONTROL_PLANE_TOKEN_PATH` | `/var/run/secrets/control-plane-auth/token` | Projected `secret-proxy` workload identity token |
 | `CA_CERT_PATH` | `/etc/secret-proxy/ca.crt` | Path to CA certificate for MITM |
 | `CA_KEY_PATH` | `/etc/secret-proxy/ca.key` | Path to CA private key |
 | `SECRETS_PATH` | `/etc/secret-proxy/secrets.json` | Path to secrets JSON file |
@@ -41,7 +42,8 @@ Keys match the `secret_key` returned by control-plane validation.
 go run ./cmd/genca -out /tmp/secret-proxy
 
 # Run proxy
-CONTROL_PLANE_URL=http://localhost:3000 \
+CONTROL_PLANE_URL=http://localhost:3002 \
+CONTROL_PLANE_TOKEN_PATH=/var/run/secrets/control-plane-auth/token \
 CA_CERT_PATH=/tmp/secret-proxy/ca.crt \
 CA_KEY_PATH=/tmp/secret-proxy/ca.key \
 SECRETS_PATH=./secrets.json \
@@ -59,7 +61,9 @@ go test ./...
 ```bash
 docker build -t secret-proxy .
 docker run \
-  -e CONTROL_PLANE_URL=http://control-plane:3000 \
+  -e CONTROL_PLANE_URL=http://control-plane-internal:3002 \
+  -e CONTROL_PLANE_TOKEN_PATH=/var/run/secrets/control-plane-auth/token \
+  -v /path/to/workload-token:/var/run/secrets/control-plane-auth/token:ro \
   -v /path/to/ca.crt:/etc/secret-proxy/ca.crt \
   -v /path/to/ca.key:/etc/secret-proxy/ca.key \
   -v /path/to/secrets.json:/etc/secret-proxy/secrets.json \

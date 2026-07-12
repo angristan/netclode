@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,7 +18,6 @@ import (
 	"github.com/angristan/netclode/services/control-plane/internal/session"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 const (
@@ -28,8 +27,8 @@ const (
 
 // Server is the HTTP server with Connect protocol and graceful shutdown support.
 type Server struct {
-	manager    *session.Manager
-	httpServer *http.Server
+	manager     *session.Manager
+	httpServers []*http.Server
 
 	// Connect connection tracking
 	connectConnections sync.Map // map[*ConnectConnection]struct{}
@@ -37,6 +36,18 @@ type Server struct {
 	connCount  atomic.Int64
 	shutdownCh chan struct{}
 	wg         sync.WaitGroup
+}
+
+// ListenAddresses defines the isolated control-plane listener addresses.
+type ListenAddresses struct {
+	Client   string
+	Agent    string
+	Internal string
+	Bot      string
+}
+
+type workloadTokenVerifier interface {
+	VerifyWorkloadToken(ctx context.Context, token, audience, serviceAccount string) (string, error)
 }
 
 // NewServer creates a new server.
@@ -64,6 +75,10 @@ func NewServer(manager *session.Manager) *Server {
 func (s *Server) BroadcastToAllConnect(msg *pb.ServerMessage, exclude *ConnectConnection) {
 	s.connectConnections.Range(func(key, value any) bool {
 		if conn, ok := key.(*ConnectConnection); ok && conn != exclude {
+			// Workload clients receive only direct responses and owned session streams.
+			if conn.role != ClientRoleAdmin {
+				return true
+			}
 			// Non-blocking send to avoid blocking broadcast
 			select {
 			case conn.globalMessages <- msg:
@@ -75,53 +90,89 @@ func (s *Server) BroadcastToAllConnect(msg *pb.ServerMessage, exclude *ConnectCo
 	})
 }
 
-// ListenAndServe starts the HTTP server with Connect protocol support.
-func (s *Server) ListenAndServe(ctx context.Context, httpAddr string) error {
-	// Create a single mux for both HTTP endpoints and Connect services
-	mux := http.NewServeMux()
-
-	// HTTP endpoints
-	mux.HandleFunc("GET /health", s.handleHealth)
-	mux.HandleFunc("POST /internal/session/{sessionID}/event", s.handleInternalEvent)
-	mux.HandleFunc("POST /internal/validate-proxy-auth", s.handleValidateProxyAuth)
-
-	// Connect services (ClientService for iOS, AgentService for agents)
-	clientHandler := NewConnectClientServiceHandler(s.manager, s)
+// ListenAndServe starts isolated HTTP/Connect listeners for each trust domain.
+func (s *Server) ListenAndServe(ctx context.Context, addresses ListenAddresses) error {
+	clientMux := http.NewServeMux()
+	clientMux.HandleFunc("GET /health", s.handleHealth)
+	clientHandler := NewConnectClientServiceHandler(s.manager, s, ClientRoleAdmin)
 	clientPath, clientHandlerFunc := netclodev1connect.NewClientServiceHandler(clientHandler)
-	mux.Handle(clientPath, clientHandlerFunc)
+	clientMux.Handle(clientPath, clientHandlerFunc)
 
+	agentMux := http.NewServeMux()
+	agentMux.HandleFunc("GET /health", s.handleHealth)
 	agentHandler := NewConnectAgentServiceHandler(s.manager, s)
 	agentPath, agentHandlerFunc := netclodev1connect.NewAgentServiceHandler(agentHandler)
-	mux.Handle(agentPath, agentHandlerFunc)
+	agentMux.Handle(agentPath, agentHandlerFunc)
 
-	// Wrap with Datadog tracing to capture HTTP spans
-	tracedHandler := httptrace.WrapHandler(mux, "control-plane", "http.request")
+	internalMux := http.NewServeMux()
+	internalMux.HandleFunc("GET /health", s.handleHealth)
+	internalMux.Handle("POST /internal/validate-proxy-auth", requireWorkloadAuth(
+		s.manager, "netclode-internal", "secret-proxy", http.HandlerFunc(s.handleValidateProxyAuth),
+	))
 
-	// Wrap with h2c to support both HTTP/1.1 and HTTP/2 on the same port
-	h2cHandler := h2c.NewHandler(tracedHandler, &http2.Server{})
+	botMux := http.NewServeMux()
+	botMux.HandleFunc("GET /health", s.handleHealth)
+	botHandler := NewConnectClientServiceHandler(s.manager, s, ClientRoleBot)
+	botPath, botHandlerFunc := netclodev1connect.NewClientServiceHandler(botHandler)
+	botMux.Handle(botPath, requireWorkloadAuth(s.manager, "netclode-client", "github-bot", botHandlerFunc))
 
-	s.httpServer = &http.Server{
-		Addr:    httpAddr,
-		Handler: h2cHandler,
+	s.httpServers = []*http.Server{
+		newHTTPServer(addresses.Client, clientMux),
+		newHTTPServer(addresses.Agent, agentMux),
+		newHTTPServer(addresses.Internal, internalMux),
+		newHTTPServer(addresses.Bot, botMux),
 	}
 
-	slog.Info("Starting h2c server (HTTP/1.1 + HTTP/2)", "addr", httpAddr)
-
-	errCh := make(chan error, 1)
-
-	// Start the main h2c server (handles both HTTP and Connect)
-	go func() {
-		if err := s.httpServer.ListenAndServe(); err != http.ErrServerClosed {
-			errCh <- fmt.Errorf("h2c server: %w", err)
-		}
-	}()
+	errCh := make(chan error, len(s.httpServers))
+	for _, httpServer := range s.httpServers {
+		httpServer := httpServer
+		slog.Info("Starting isolated h2c server", "addr", httpServer.Addr)
+		go func() {
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				errCh <- fmt.Errorf("h2c server %s: %w", httpServer.Addr, err)
+			}
+		}()
+	}
 
 	select {
 	case <-ctx.Done():
 		return s.gracefulShutdown()
 	case err := <-errCh:
+		_ = s.gracefulShutdown()
 		return err
 	}
+}
+
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	tracedHandler := httptrace.WrapHandler(handler, "control-plane", "http.request")
+	return &http.Server{
+		Addr:    addr,
+		Handler: h2c.NewHandler(tracedHandler, &http2.Server{}),
+	}
+}
+
+func requireWorkloadAuth(verifier workloadTokenVerifier, audience, serviceAccount string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token, ok := bearerToken(r.Header.Get("Authorization"))
+		if !ok {
+			http.Error(w, "missing bearer token", http.StatusUnauthorized)
+			return
+		}
+		if _, err := verifier.VerifyWorkloadToken(r.Context(), token, audience, serviceAccount); err != nil {
+			slog.WarnContext(r.Context(), "Workload authentication failed", "serviceAccount", serviceAccount, "error", err)
+			http.Error(w, "invalid workload identity", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func bearerToken(value string) (string, bool) {
+	scheme, token, ok := strings.Cut(value, " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" || strings.Contains(token, " ") {
+		return "", false
+	}
+	return token, true
 }
 
 // gracefulShutdown performs graceful shutdown with connection draining.
@@ -162,11 +213,13 @@ func (s *Server) gracefulShutdown() error {
 		})
 	}
 
-	// Shutdown the HTTP server
-	if s.httpServer != nil {
-		return s.httpServer.Shutdown(ctx)
+	var firstErr error
+	for _, httpServer := range s.httpServers {
+		if err := httpServer.Shutdown(ctx); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
-	return nil
+	return firstErr
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -229,36 +282,6 @@ func (s *Server) handleValidateProxyAuth(w http.ResponseWriter, r *http.Request)
 		Placeholder: result.Placeholder,
 		SessionID:   result.SessionID,
 	})
-}
-
-// handleInternalEvent receives events from sandbox entrypoints/agents.
-// POST /internal/session/{sessionID}/event
-func (s *Server) handleInternalEvent(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.PathValue("sessionID")
-	if sessionID == "" {
-		http.Error(w, "sessionID required", http.StatusBadRequest)
-		return
-	}
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "failed to read body: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	var event pb.AgentEvent
-	if err := protojson.Unmarshal(body, &event); err != nil {
-		http.Error(w, "invalid event JSON: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if err := s.manager.EmitEvent(r.Context(), sessionID, &event); err != nil {
-		slog.Warn("Failed to emit internal event", "sessionID", sessionID, "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
 }
 
 // Shutdown initiates graceful shutdown.

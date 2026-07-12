@@ -110,6 +110,18 @@ func TestLoadWithSandboxTemplate(t *testing.T) {
 	}
 }
 
+func TestLoadListenerPorts(t *testing.T) {
+	t.Setenv("CLIENT_PORT", "4100")
+	t.Setenv("AGENT_PORT", "4101")
+	t.Setenv("INTERNAL_PORT", "4102")
+	t.Setenv("BOT_PORT", "4103")
+
+	cfg := Load()
+	if cfg.ClientPort != 4100 || cfg.AgentPort != 4101 || cfg.InternalPort != 4102 || cfg.BotPort != 4103 {
+		t.Fatalf("unexpected listener ports: client=%d agent=%d internal=%d bot=%d", cfg.ClientPort, cfg.AgentPort, cfg.InternalPort, cfg.BotPort)
+	}
+}
+
 func TestLoadWithMaxActiveSessions(t *testing.T) {
 	// Test default (was changed from 2 to 5)
 	os.Unsetenv("MAX_ACTIVE_SESSIONS")

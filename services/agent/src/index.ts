@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { connectToControlPlane } from "./connect-client.js";
 
-const controlPlaneUrl = process.env.CONTROL_PLANE_URL || "http://control-plane.netclode.svc.cluster.local";
+const controlPlaneUrl = process.env.CONTROL_PLANE_URL || "http://control-plane-agent.netclode.svc.cluster.local:3001";
 
 // Session ID can be provided directly (direct mode) or discovered via warm pool
 const sessionId = process.env.SESSION_ID;

@@ -9,25 +9,27 @@ import (
 
 // Config holds all configuration for the github-bot service.
 type Config struct {
-	Port             string
-	ControlPlaneURL  string
-	RedisURL         string
-	GitHubAppID      int64
-	GitHubPrivateKey []byte // PEM-encoded
-	InstallationID   int64
-	WebhookSecret    string
-	SdkType          string
-	Model            string
-	SessionTimeout   time.Duration
-	MaxConcurrent    int
+	Port                  string
+	ControlPlaneURL       string
+	ControlPlaneTokenPath string
+	RedisURL              string
+	GitHubAppID           int64
+	GitHubPrivateKey      []byte // PEM-encoded
+	InstallationID        int64
+	WebhookSecret         string
+	SdkType               string
+	Model                 string
+	SessionTimeout        time.Duration
+	MaxConcurrent         int
 }
 
 // Load reads configuration from environment variables.
 func Load() (*Config, error) {
 	cfg := &Config{
-		Port:    envOrDefault("PORT", "8080"),
-		SdkType: envOrDefault("SDK_TYPE", "claude"),
-		Model:   envOrDefault("MODEL", "claude-opus-4-6"),
+		Port:                  envOrDefault("PORT", "8080"),
+		ControlPlaneTokenPath: envOrDefault("CONTROL_PLANE_TOKEN_PATH", "/var/run/secrets/control-plane-auth/token"),
+		SdkType:               envOrDefault("SDK_TYPE", "claude"),
+		Model:                 envOrDefault("MODEL", "claude-opus-4-6"),
 	}
 
 	// Required

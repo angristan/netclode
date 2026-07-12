@@ -269,7 +269,7 @@ func generateID() string {
 
 // Create creates a new session.
 // If resources is provided, validates against host limits (max 50%) and bypasses warm pool.
-func (m *Manager) Create(ctx context.Context, name string, repos []string, repoAccess *pb.RepoAccess, sdkType *pb.SdkType, model *string, copilotBackend *pb.CopilotBackend, tailnetAccess *bool, resources *pb.SandboxResources) (*pb.Session, error) {
+func (m *Manager) Create(ctx context.Context, owner, name string, repos []string, repoAccess *pb.RepoAccess, sdkType *pb.SdkType, model *string, copilotBackend *pb.CopilotBackend, tailnetAccess *bool, resources *pb.SandboxResources) (*pb.Session, error) {
 	// Validate custom resources if provided
 	if resources != nil {
 		if err := m.validateResources(resources); err != nil {
@@ -298,6 +298,7 @@ func (m *Manager) Create(ctx context.Context, name string, repos []string, repoA
 		SdkType:        sdkType,
 		Model:          model,
 		CopilotBackend: copilotBackend,
+		Owner:          owner,
 	}
 
 	// Save to storage
@@ -2174,6 +2175,11 @@ func (m *Manager) AssignSessionToWarmAgent(podName, sessionID string) bool {
 // Uses default K8s audiences (for standard agent-to-control-plane authentication).
 func (m *Manager) VerifyAgentToken(ctx context.Context, token string) (string, error) {
 	return m.k8s.VerifyAgentToken(ctx, token, nil) // nil = default K8s audiences
+}
+
+// VerifyWorkloadToken validates a projected token for a specific internal workload.
+func (m *Manager) VerifyWorkloadToken(ctx context.Context, token, audience, serviceAccount string) (string, error) {
+	return m.k8s.VerifyWorkloadToken(ctx, token, []string{audience}, serviceAccount)
 }
 
 // ProxyAuthResult contains the result of proxy authentication validation.

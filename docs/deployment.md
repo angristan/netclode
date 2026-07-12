@@ -157,7 +157,10 @@ For iOS, see [clients/ios/README.md](/clients/ios/README.md).
 
 | Variable              | Default                     | Description             |
 | --------------------- | --------------------------- | ----------------------- |
-| `PORT`                | `3000`                      | Server port             |
+| `CLIENT_PORT`         | `3000`                      | Tailscale-only client listener |
+| `AGENT_PORT`          | `3001`                      | Sandbox AgentService listener |
+| `INTERNAL_PORT`       | `3002`                      | Secret-proxy validation listener |
+| `BOT_PORT`            | `3003`                      | GitHub bot listener |
 | `K8S_NAMESPACE`       | `netclode`                  | Kubernetes namespace    |
 | `REDIS_URL`           | `redis://redis-sessions...` | Redis URL               |
 | `WARM_POOL_ENABLED`   | `true`                      | Use warm pool           |

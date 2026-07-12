@@ -116,7 +116,7 @@ export async function* initializeSessionRepos(
 
     try {
       const repoDir = getRepoPath(repo, totalRepos, WORKSPACE_DIR);
-      await setupRepository(repo, repoDir, sessionId, githubToken);
+      await setupRepository(repo, repoDir, githubToken);
       yield { type: "repoClone", stage: "done", repo, message: "Repository cloned successfully" };
     } catch (error) {
       yield {

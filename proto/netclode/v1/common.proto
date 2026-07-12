@@ -73,6 +73,7 @@ message Session {
   optional SdkType sdk_type = 8;
   optional string model = 9;
   optional CopilotBackend copilot_backend = 10;
+  string owner = 11; // Authenticated creator: "admin" or "github-bot".
 }
 
 // SessionSummary includes session data plus metadata for list views.

@@ -49,6 +49,7 @@ func TestSaveSessionReposAndAccess(t *testing.T) {
 	session := &pb.Session{
 		Id:           "test-session-repos",
 		Name:         "Repo Session",
+		Owner:        "github-bot",
 		Status:       pb.SessionStatus_SESSION_STATUS_READY,
 		Repos:        []string{"https://github.com/owner/repo.git", "https://github.com/owner/another.git"},
 		RepoAccess:   &repoAccess,
@@ -78,6 +79,9 @@ func TestSaveSessionReposAndAccess(t *testing.T) {
 	}
 	if loaded.RepoAccess == nil || *loaded.RepoAccess != repoAccess {
 		t.Fatalf("expected repo access %v, got %v", repoAccess, loaded.RepoAccess)
+	}
+	if loaded.Owner != session.Owner {
+		t.Fatalf("expected owner %q, got %q", session.Owner, loaded.Owner)
 	}
 }
 

@@ -43,6 +43,9 @@ metadata:
   namespace: netclode
 spec:
   podTemplate:
+    metadata:
+      labels:
+        netclode.io/component: agent
     spec:
       runtimeClassName: kata-clh
       initContainers:
@@ -81,7 +84,7 @@ spec:
             - name: HTTPS_PROXY
               value: "http://127.0.0.1:8080"
             - name: NO_PROXY
-              value: "localhost,127.0.0.1,control-plane.netclode.svc.cluster.local"
+              value: "localhost,127.0.0.1,control-plane-agent.netclode.svc.cluster.local"
             # External secret-proxy URL (auth-proxy forwards to this)
             - name: SECRET_PROXY_URL
               value: "http://secret-proxy.netclode.svc.cluster.local:8080"
@@ -148,7 +151,7 @@ spec:
                   key: github-token
                   optional: true
             - name: CONTROL_PLANE_URL
-              value: "http://control-plane.netclode.svc.cluster.local"
+              value: "http://control-plane-agent.netclode.svc.cluster.local:3001"
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -212,16 +215,14 @@ spec:
           - protocol: TCP
             port: 8080
     egress:
-      # Allow connection to control-plane (port 80 -> 3000)
+      # Allow only the sandbox-facing AgentService listener.
       - to:
           - podSelector:
               matchLabels:
                 app: control-plane
         ports:
           - protocol: TCP
-            port: 80
-          - protocol: TCP
-            port: 3000
+            port: 3001
       # Allow connection to secret-proxy (for API key injection)
       - to:
           - podSelector:

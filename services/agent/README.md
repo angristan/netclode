@@ -57,7 +57,7 @@ services/agent/
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `OPENAI_API_KEY` | OpenAI API key (required for Codex SDK) |
 | `GITHUB_TOKEN` | GitHub token with Copilot scope (required for Copilot SDK) |
-| `CONTROL_PLANE_URL` | Control plane URL (default `http://control-plane.netclode.svc.cluster.local`) |
+| `CONTROL_PLANE_URL` | Sandbox-only AgentService URL (default `http://control-plane-agent.netclode.svc.cluster.local:3001`) |
 | `SESSION_ID` | Session ID (direct mode only; warm pool mode receives via gRPC) |
 
 ### Session Config
@@ -459,5 +459,5 @@ Inside the VM:
 ```bash
 ps aux | grep node
 ls -la /agent/workspace
-curl http://control-plane.netclode.svc.cluster.local:80/health
+curl http://control-plane-agent.netclode.svc.cluster.local:3001/health
 ```

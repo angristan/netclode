@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/elazarl/goproxy"
@@ -45,11 +47,20 @@ func TestValidateProxyAuthResponse(t *testing.T) {
 }
 
 func TestValidateWithControlPlane(t *testing.T) {
+	tokenPath := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenPath, []byte("proxy-workload-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	// Create a mock control-plane server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/internal/validate-proxy-auth" {
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer proxy-workload-token" {
+			t.Errorf("Authorization = %q", got)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 
@@ -74,7 +85,8 @@ func TestValidateWithControlPlane(t *testing.T) {
 
 	p := &Proxy{
 		config: Config{
-			ControlPlaneURL: server.URL,
+			ControlPlaneURL:       server.URL,
+			ControlPlaneTokenPath: tokenPath,
 		},
 		httpClient: http.DefaultClient,
 	}

@@ -12,6 +12,6 @@ spec:
   ingressClassName: tailscale
   defaultBackend:
     service:
-      name: control-plane
+      name: control-plane-client
       port:
         number: 80

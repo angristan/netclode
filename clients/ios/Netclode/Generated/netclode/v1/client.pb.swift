@@ -1370,30 +1370,27 @@ public struct Netclode_V1_SyncResponse: Sendable {
 
 /// StreamEntryResponse wraps a StreamEntry for real-time push notifications.
 /// This is the unified type for all session stream updates (messages, events, terminal output, etc.)
-public struct Netclode_V1_StreamEntryResponse: @unchecked Sendable {
+public struct Netclode_V1_StreamEntryResponse: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var sessionID: String {
-    get {_storage._sessionID}
-    set {_uniqueStorage()._sessionID = newValue}
-  }
+  public var sessionID: String = String()
 
   public var entry: Netclode_V1_StreamEntry {
-    get {_storage._entry ?? Netclode_V1_StreamEntry()}
-    set {_uniqueStorage()._entry = newValue}
+    get {_entry ?? Netclode_V1_StreamEntry()}
+    set {_entry = newValue}
   }
   /// Returns true if `entry` has been explicitly set.
-  public var hasEntry: Bool {_storage._entry != nil}
+  public var hasEntry: Bool {self._entry != nil}
   /// Clears the value of `entry`. Subsequent reads from it will return its default value.
-  public mutating func clearEntry() {_uniqueStorage()._entry = nil}
+  public mutating func clearEntry() {self._entry = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _storage = _StorageClass.defaultInstance
+  fileprivate var _entry: Netclode_V1_StreamEntry? = nil
 }
 
 public struct Netclode_V1_PortExposedResponse: Sendable {
@@ -3933,74 +3930,36 @@ extension Netclode_V1_StreamEntryResponse: SwiftProtobuf.Message, SwiftProtobuf.
   public static let protoMessageName: String = _protobuf_package + ".StreamEntryResponse"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{1}entry\0")
 
-  fileprivate class _StorageClass {
-    var _sessionID: String = String()
-    var _entry: Netclode_V1_StreamEntry? = nil
-
-      // This property is used as the initial default value for new instances of the type.
-      // The type itself is protecting the reference to its storage via CoW semantics.
-      // This will force a copy to be made of this reference when the first mutation occurs;
-      // hence, it is safe to mark this as `nonisolated(unsafe)`.
-      static nonisolated(unsafe) let defaultInstance = _StorageClass()
-
-    private init() {}
-
-    init(copying source: _StorageClass) {
-      _sessionID = source._sessionID
-      _entry = source._entry
-    }
-  }
-
-  fileprivate mutating func _uniqueStorage() -> _StorageClass {
-    if !isKnownUniquelyReferenced(&_storage) {
-      _storage = _StorageClass(copying: _storage)
-    }
-    return _storage
-  }
-
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    _ = _uniqueStorage()
-    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
-      while let fieldNumber = try decoder.nextFieldNumber() {
-        // The use of inline closures is to circumvent an issue where the compiler
-        // allocates stack space for every case branch when no optimizations are
-        // enabled. https://github.com/apple/swift-protobuf/issues/1034
-        switch fieldNumber {
-        case 1: try { try decoder.decodeSingularStringField(value: &_storage._sessionID) }()
-        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._entry) }()
-        default: break
-        }
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._entry) }()
+      default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every if/case branch local when no optimizations
-      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-      // https://github.com/apple/swift-protobuf/issues/1182
-      if !_storage._sessionID.isEmpty {
-        try visitor.visitSingularStringField(value: _storage._sessionID, fieldNumber: 1)
-      }
-      try { if let v = _storage._entry {
-        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
-      } }()
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.sessionID.isEmpty {
+      try visitor.visitSingularStringField(value: self.sessionID, fieldNumber: 1)
     }
+    try { if let v = self._entry {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Netclode_V1_StreamEntryResponse, rhs: Netclode_V1_StreamEntryResponse) -> Bool {
-    if lhs._storage !== rhs._storage {
-      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
-        let _storage = _args.0
-        let rhs_storage = _args.1
-        if _storage._sessionID != rhs_storage._sessionID {return false}
-        if _storage._entry != rhs_storage._entry {return false}
-        return true
-      }
-      if !storagesAreEqual {return false}
-    }
+    if lhs.sessionID != rhs.sessionID {return false}
+    if lhs._entry != rhs._entry {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

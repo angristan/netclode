@@ -65,6 +65,8 @@ type Runtime interface {
 	// If audiences is non-empty, the token is validated against those specific audiences.
 	// If audiences is empty/nil, the token is validated against the default API server audiences.
 	VerifyAgentToken(ctx context.Context, token string, audiences []string) (podName string, err error)
+	// VerifyWorkloadToken additionally binds the token to an expected ServiceAccount.
+	VerifyWorkloadToken(ctx context.Context, token string, audiences []string, serviceAccount string) (podName string, err error)
 
 	Close()
 }

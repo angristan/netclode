@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -37,6 +38,9 @@ type Config struct {
 
 	// ControlPlaneURL is the URL of the control-plane for auth validation.
 	ControlPlaneURL string
+
+	// ControlPlaneTokenPath contains the projected identity token for this workload.
+	ControlPlaneTokenPath string
 
 	// Secrets maps secret keys to their actual values.
 	// e.g., {"anthropic": "sk-ant-...", "openai": "sk-..."}
@@ -324,6 +328,17 @@ func (p *Proxy) validateWithControlPlane(token, targetHost string) (*validatePro
 	}
 
 	url := strings.TrimSuffix(p.config.ControlPlaneURL, "/") + "/internal/validate-proxy-auth"
+	var workloadToken string
+	if p.config.ControlPlaneTokenPath != "" {
+		token, err := os.ReadFile(p.config.ControlPlaneTokenPath)
+		if err != nil {
+			return nil, fmt.Errorf("read control-plane token: %w", err)
+		}
+		workloadToken = strings.TrimSpace(string(token))
+		if workloadToken == "" {
+			return nil, fmt.Errorf("control-plane token is empty")
+		}
+	}
 
 	// Retry up to 3 times with backoff for transient failures (K8s API timeouts, etc.).
 	// Without retries, a single K8s API hiccup causes the placeholder key to leak to Anthropic.
@@ -341,6 +356,9 @@ func (p *Proxy) validateWithControlPlane(token, targetHost string) (*validatePro
 			return nil, fmt.Errorf("create request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
+		if workloadToken != "" {
+			req.Header.Set("Authorization", "Bearer "+workloadToken)
+		}
 
 		resp, err := p.httpClient.Do(req)
 		if err != nil {

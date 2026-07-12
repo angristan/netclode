@@ -131,6 +131,15 @@
     definition: "{{ lookup('file', k8s_manifest_dir ~ '/github-bot-ingress.yaml') | from_yaml_all }}"
     kubeconfig: "{{ k3s_kubeconfig }}"
 
+- name: Remove legacy aggregate control-plane service
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: Service
+    name: control-plane
+    namespace: netclode
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
 # Deploy Ollama (optional, for local GPU inference)
 - name: Deploy Ollama
   kubernetes.core.k8s:

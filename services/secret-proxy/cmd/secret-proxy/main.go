@@ -80,11 +80,12 @@ func run(logger *slog.Logger) error {
 
 	// Create and start proxy
 	p := proxy.New(proxy.Config{
-		ListenAddr:      cfg.ListenAddr,
-		ControlPlaneURL: cfg.ControlPlaneURL,
-		Secrets:         secrets,
-		CA:              ca,
-		Verbose:         cfg.Verbose,
+		ListenAddr:            cfg.ListenAddr,
+		ControlPlaneURL:       cfg.ControlPlaneURL,
+		ControlPlaneTokenPath: cfg.ControlPlaneTokenPath,
+		Secrets:               secrets,
+		CA:                    ca,
+		Verbose:               cfg.Verbose,
 	}, logger)
 
 	return p.ListenAndServe()
