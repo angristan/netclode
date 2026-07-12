@@ -37,7 +37,7 @@ type ClaimBoundCallback func(sessionID string, sandboxName string, err error)
 
 type k8sRuntime struct {
 	dynamicClient dynamic.Interface
-	clientset     *kubernetes.Clientset
+	clientset     kubernetes.Interface
 	namespace     string
 	config        *config.Config
 
@@ -465,7 +465,8 @@ func (r *k8sRuntime) buildSandboxManifest(sessionID string, existingPVCName stri
 func (r *k8sRuntime) buildPodMetadata(sessionID string, resources *SandboxResourceConfig) PodMetadata {
 	metadata := PodMetadata{
 		Labels: map[string]string{
-			"netclode.io/session": sessionID,
+			"netclode.io/session":   sessionID,
+			"netclode.io/component": "agent",
 		},
 	}
 
@@ -2048,6 +2049,15 @@ func mustParseQuantity(s string) corev1.ResourceList {
 // If audiences is non-empty, the token is validated against those specific audiences.
 // If audiences is empty/nil, the token is validated against the default API server audiences.
 func (r *k8sRuntime) VerifyAgentToken(ctx context.Context, token string, audiences []string) (string, error) {
+	return r.verifyWorkloadToken(ctx, token, audiences, "")
+}
+
+// VerifyWorkloadToken validates a projected token and binds it to a ServiceAccount.
+func (r *k8sRuntime) VerifyWorkloadToken(ctx context.Context, token string, audiences []string, serviceAccount string) (string, error) {
+	return r.verifyWorkloadToken(ctx, token, audiences, serviceAccount)
+}
+
+func (r *k8sRuntime) verifyWorkloadToken(ctx context.Context, token string, audiences []string, serviceAccount string) (string, error) {
 	review := &authenticationv1.TokenReview{
 		Spec: authenticationv1.TokenReviewSpec{
 			Token:     token,
@@ -2063,6 +2073,24 @@ func (r *k8sRuntime) VerifyAgentToken(ctx context.Context, token string, audienc
 	if !result.Status.Authenticated {
 		return "", fmt.Errorf("token not authenticated: %s", result.Status.Error)
 	}
+	if serviceAccount != "" {
+		expectedUsername := fmt.Sprintf("system:serviceaccount:%s:%s", r.namespace, serviceAccount)
+		if result.Status.User.Username != expectedUsername {
+			return "", fmt.Errorf("token belongs to %q, expected %q", result.Status.User.Username, expectedUsername)
+		}
+	}
+	for _, expectedAudience := range audiences {
+		matched := false
+		for _, actualAudience := range result.Status.Audiences {
+			if actualAudience == expectedAudience {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return "", fmt.Errorf("token is not valid for audience %q", expectedAudience)
+		}
+	}
 
 	// Extract pod name from the token's extra claims
 	// The projected service account token includes kubernetes.io/pod/name
@@ -2074,12 +2102,19 @@ func (r *k8sRuntime) VerifyAgentToken(ctx context.Context, token string, audienc
 	podName := podNames[0]
 
 	// Verify the pod exists in our namespace
-	_, err = r.clientset.CoreV1().Pods(r.namespace).Get(ctx, podName, metav1.GetOptions{})
+	pod, err := r.clientset.CoreV1().Pods(r.namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
 		return "", fmt.Errorf("pod %s not found in namespace %s: %w", podName, r.namespace, err)
 	}
+	podUIDs, hasPodUID := result.Status.User.Extra["authentication.kubernetes.io/pod-uid"]
+	if serviceAccount != "" && (!hasPodUID || len(podUIDs) == 0) {
+		return "", fmt.Errorf("pod UID not found in token claims")
+	}
+	if hasPodUID && len(podUIDs) > 0 && string(pod.UID) != podUIDs[0] {
+		return "", fmt.Errorf("token pod UID does not match current pod %s", podName)
+	}
 
-	slog.Debug("Agent token verified", "podName", podName)
+	slog.Debug("Workload token verified", "podName", podName, "serviceAccount", serviceAccount)
 	return podName, nil
 }
 

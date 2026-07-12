@@ -148,7 +148,7 @@ Validation flow:
 │                                                                                  │
 │  secret-proxy extracts token, calls control-plane:                               │
 │                                                                                  │
-│    POST http://control-plane.netclode.svc/internal/validate-proxy-auth           │
+│    POST http://control-plane-internal.netclode.svc:3002/internal/validate-proxy-auth │
 │    {                                                                             │
 │      "token": "eyJhbGciOiJSUzI1NiIs...",                                         │
 │      "target_host": "api.anthropic.com"                                          │
@@ -323,13 +323,13 @@ kubectl --context netclode -n netclode logs <pod> -c agent | grep auth-proxy
 kubectl --context netclode -n netclode logs -l app=secret-proxy -f
 ```
 
-### Verify token validation
+### Verify internal endpoint isolation
 
 ```bash
-# From inside a sandbox
-curl -X POST http://control-plane.netclode.svc/internal/validate-proxy-auth \
-  -H "Content-Type: application/json" \
-  -d '{"token": "'$(cat /var/run/secrets/proxy-auth/token)'", "target_host": "api.anthropic.com"}'
+# Sandboxes must not be able to reach the internal control-plane listener.
+kubectl --context netclode -n netclode exec <sandbox-pod> -- \
+  curl --max-time 2 http://control-plane-internal.netclode.svc:3002/health
+# Expected: connection timeout or refusal.
 ```
 
 ### Check if placeholder is being replaced

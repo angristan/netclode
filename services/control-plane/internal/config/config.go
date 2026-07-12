@@ -8,7 +8,10 @@ import (
 )
 
 type Config struct {
-	Port               int
+	ClientPort         int
+	AgentPort          int
+	InternalPort       int
+	BotPort            int
 	AnthropicAPIKey    string
 	OpenAIAPIKey       string // OpenAI API key (for Codex SDK)
 	MistralAPIKey      string // Mistral API key (for OpenCode SDK)
@@ -54,7 +57,10 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		Port:                  getEnvInt("PORT", 3000),
+		ClientPort:            getEnvInt("CLIENT_PORT", 3000),
+		AgentPort:             getEnvInt("AGENT_PORT", 3001),
+		InternalPort:          getEnvInt("INTERNAL_PORT", 3002),
+		BotPort:               getEnvInt("BOT_PORT", 3003),
 		AnthropicAPIKey:       getEnv("ANTHROPIC_API_KEY", ""),
 		OpenAIAPIKey:          getEnv("OPENAI_API_KEY", ""),
 		MistralAPIKey:         getEnv("MISTRAL_API_KEY", ""),

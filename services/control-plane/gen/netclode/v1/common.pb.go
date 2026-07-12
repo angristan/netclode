@@ -324,6 +324,7 @@ type Session struct {
 	SdkType        *SdkType               `protobuf:"varint,8,opt,name=sdk_type,json=sdkType,proto3,enum=netclode.v1.SdkType,oneof" json:"sdk_type,omitempty"`
 	Model          *string                `protobuf:"bytes,9,opt,name=model,proto3,oneof" json:"model,omitempty"`
 	CopilotBackend *CopilotBackend        `protobuf:"varint,10,opt,name=copilot_backend,json=copilotBackend,proto3,enum=netclode.v1.CopilotBackend,oneof" json:"copilot_backend,omitempty"`
+	Owner          string                 `protobuf:"bytes,11,opt,name=owner,proto3" json:"owner,omitempty"` // Authenticated creator: "admin" or "github-bot".
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -426,6 +427,13 @@ func (x *Session) GetCopilotBackend() CopilotBackend {
 		return *x.CopilotBackend
 	}
 	return CopilotBackend_COPILOT_BACKEND_UNSPECIFIED
+}
+
+func (x *Session) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
 }
 
 // SessionSummary includes session data plus metadata for list views.
@@ -1598,7 +1606,7 @@ var File_netclode_v1_common_proto protoreflect.FileDescriptor
 
 const file_netclode_v1_common_proto_rawDesc = "" +
 	"\n" +
-	"\x18netclode/v1/common.proto\x12\vnetclode.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x18netclode/v1/events.proto\"\x8a\x04\n" +
+	"\x18netclode/v1/common.proto\x12\vnetclode.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x18netclode/v1/events.proto\"\xa0\x04\n" +
 	"\aSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x122\n" +
@@ -1612,7 +1620,8 @@ const file_netclode_v1_common_proto_rawDesc = "" +
 	"\bsdk_type\x18\b \x01(\x0e2\x14.netclode.v1.SdkTypeH\x01R\asdkType\x88\x01\x01\x12\x19\n" +
 	"\x05model\x18\t \x01(\tH\x02R\x05model\x88\x01\x01\x12I\n" +
 	"\x0fcopilot_backend\x18\n" +
-	" \x01(\x0e2\x1b.netclode.v1.CopilotBackendH\x03R\x0ecopilotBackend\x88\x01\x01B\x0e\n" +
+	" \x01(\x0e2\x1b.netclode.v1.CopilotBackendH\x03R\x0ecopilotBackend\x88\x01\x01\x12\x14\n" +
+	"\x05owner\x18\v \x01(\tR\x05ownerB\x0e\n" +
 	"\f_repo_accessB\v\n" +
 	"\t_sdk_typeB\b\n" +
 	"\x06_modelB\x12\n" +

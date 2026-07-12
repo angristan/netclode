@@ -2,16 +2,6 @@ import { spawn } from "child_process";
 import { existsSync, writeFileSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 
-const CONTROL_PLANE_URL = process.env.CONTROL_PLANE_URL || "http://control-plane.netclode.svc.cluster.local";
-
-// Map internal stage names to protobuf enum values
-const stageToProto: Record<string, string> = {
-  starting: "REPO_CLONE_STAGE_STARTING",
-  cloning: "REPO_CLONE_STAGE_CLONING",
-  done: "REPO_CLONE_STAGE_DONE",
-  error: "REPO_CLONE_STAGE_ERROR",
-};
-
 export function repoDirName(repoUrl: string): string {
   let cleaned = repoUrl.trim();
   cleaned = cleaned.replace(/^https?:\/\//, "");
@@ -47,58 +37,6 @@ export function getRepoPrefix(repoUrl: string, totalRepos: number): string {
     return "";
   }
   return repoDirName(repoUrl);
-}
-
-interface CloneEventInput {
-  repo: string;
-  stage: "starting" | "cloning" | "done" | "error";
-  message: string;
-}
-
-// Protobuf-compatible event structure
-interface ProtobufCloneEvent {
-  kind: "AGENT_EVENT_KIND_REPO_CLONE";
-  timestamp: string;
-  repoClone: {
-    repo: string;
-    stage: string;
-    message: string;
-  };
-}
-
-/**
- * Report a clone event to the control plane for broadcasting to clients.
- */
-async function reportEvent(sessionId: string, event: CloneEventInput): Promise<void> {
-  if (!sessionId) {
-    console.log("[git] No SESSION_ID, skipping event report");
-    return;
-  }
-
-  // Build protobuf-compatible JSON structure
-  const protoEvent: ProtobufCloneEvent = {
-    kind: "AGENT_EVENT_KIND_REPO_CLONE",
-    timestamp: new Date().toISOString(),
-    repoClone: {
-      repo: event.repo,
-      stage: stageToProto[event.stage],
-      message: event.message,
-    },
-  };
-
-  try {
-    const response = await fetch(`${CONTROL_PLANE_URL}/internal/session/${sessionId}/event`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(protoEvent),
-    });
-    if (!response.ok) {
-      console.warn(`[git] Failed to report event: ${response.status}`);
-    }
-  } catch (error) {
-    // Fire and forget - don't fail if control plane is unreachable
-    console.warn("[git] Failed to report event:", error);
-  }
 }
 
 /**
@@ -153,8 +91,32 @@ export async function configureGitCredentials(token: string): Promise<void> {
 }
 
 /**
- * Clone or update a repository.
+ * Clone or update a repository. Progress is emitted over the authenticated
+ * AgentService stream by initializeSessionRepos.
  */
+export async function setupRepository(repoUrl: string, repoDir: string, githubToken?: string): Promise<void> {
+  console.log(`[git] Setting up repository: ${repoUrl}`);
+
+  if (githubToken) {
+    await configureGitCredentials(githubToken);
+  }
+
+  if (existsSync(`${repoDir}/.git`)) {
+    await runGit(["config", "--add", "safe.directory", repoDir], repoDir);
+    const result = await runGit(["pull", "--ff-only"], repoDir);
+    if (result.code !== 0) {
+      console.warn("[git] Pull failed, continuing with existing repository state");
+    }
+    return;
+  }
+
+  const result = await runGit(["clone", "--progress", repoUrl, repoDir]);
+  if (result.code !== 0) {
+    throw new Error(result.stderr || `git clone exited with status ${result.code}`);
+  }
+  await runGit(["config", "--add", "safe.directory", repoDir], repoDir);
+}
+
 /**
  * Parsed git file change from status --porcelain
  */
@@ -363,82 +325,5 @@ function generateSyntheticDiff(workspaceDir: string, file: string, pathPrefix?: 
   } catch (error) {
     console.error(`[git] Failed to read file for synthetic diff: ${error}`);
     return "";
-  }
-}
-
-export async function setupRepository(
-  repoUrl: string,
-  repoDir: string,
-  sessionId: string,
-  githubToken?: string
-): Promise<void> {
-  console.log(`[git] Setting up repository: ${repoUrl}`);
-
-  // Configure credentials if token provided
-  if (githubToken) {
-    console.log("[git] Configuring git credentials...");
-    await configureGitCredentials(githubToken);
-  }
-
-  const gitDir = `${repoDir}/.git`;
-  const isExistingRepo = existsSync(gitDir);
-
-  if (isExistingRepo) {
-    // Repository already exists - pull latest changes
-    await reportEvent(sessionId, {
-      repo: repoUrl,
-      stage: "starting",
-      message: "Pulling latest changes...",
-    });
-
-    console.log("[git] Repository already exists, pulling latest changes...");
-    await runGit(["config", "--add", "safe.directory", repoDir], repoDir);
-
-    const result = await runGit(["pull", "--ff-only"], repoDir);
-
-    if (result.code === 0) {
-      await reportEvent(sessionId, {
-        repo: repoUrl,
-        stage: "done",
-        message: "Repository updated",
-      });
-      console.log("[git] Pull completed successfully");
-    } else {
-      await reportEvent(sessionId, {
-        repo: repoUrl,
-        stage: "done",
-        message: "Pull failed, using existing state",
-      });
-      console.warn("[git] Pull failed, continuing with existing state");
-    }
-  } else {
-    // Fresh clone
-    await reportEvent(sessionId, {
-      repo: repoUrl,
-      stage: "starting",
-      message: "Cloning repository...",
-    });
-
-    console.log("[git] Cloning repository...");
-    const result = await runGit(["clone", "--progress", repoUrl, repoDir]);
-
-    if (result.code === 0) {
-      await runGit(["config", "--add", "safe.directory", repoDir], repoDir);
-
-      await reportEvent(sessionId, {
-        repo: repoUrl,
-        stage: "done",
-        message: "Repository cloned successfully",
-      });
-      console.log("[git] Clone completed successfully");
-    } else {
-      await reportEvent(sessionId, {
-        repo: repoUrl,
-        stage: "error",
-        message: `Failed to clone: ${result.stderr.slice(0, 200)}`,
-      });
-      console.error("[git] Clone failed:", result.stderr);
-      // Don't throw - agent can still work without the repo
-    }
   }
 }

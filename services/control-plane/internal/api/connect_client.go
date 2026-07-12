@@ -28,6 +28,15 @@ var (
 	errSessionIDRequired = errors.New("sessionId is required")
 	errTextRequired      = errors.New("text is required")
 	errUnknownMessage    = errors.New("unknown message type")
+	errPermissionDenied  = errors.New("operation is not permitted for this client")
+)
+
+// ClientRole identifies the trust domain that accepted a client stream.
+type ClientRole string
+
+const (
+	ClientRoleAdmin ClientRole = "admin"
+	ClientRoleBot   ClientRole = "github-bot"
 )
 
 // makeErrorResponse creates a unified error response.
@@ -63,13 +72,15 @@ type ConnectClientServiceHandler struct {
 	netclodev1connect.UnimplementedClientServiceHandler
 	manager *session.Manager
 	server  *Server
+	role    ClientRole
 }
 
 // NewConnectClientServiceHandler creates a new Connect client service handler.
-func NewConnectClientServiceHandler(manager *session.Manager, server *Server) *ConnectClientServiceHandler {
+func NewConnectClientServiceHandler(manager *session.Manager, server *Server, role ClientRole) *ConnectClientServiceHandler {
 	return &ConnectClientServiceHandler{
 		manager: manager,
 		server:  server,
+		role:    role,
 	}
 }
 
@@ -78,6 +89,7 @@ type ConnectConnection struct {
 	stream  *connect.BidiStream[pb.ClientMessage, pb.ServerMessage]
 	manager *session.Manager
 	server  *Server
+	role    ClientRole
 
 	// Redis Streams-based subscriptions
 	subscriptions map[string]*subscriptionInfo // sessionID -> subscription info
@@ -98,6 +110,7 @@ func (h *ConnectClientServiceHandler) Connect(ctx context.Context, stream *conne
 		stream:         stream,
 		manager:        h.manager,
 		server:         h.server,
+		role:           h.role,
 		subscriptions:  make(map[string]*subscriptionInfo),
 		globalMessages: make(chan *pb.ServerMessage, 64),
 		done:           make(chan struct{}),
@@ -232,6 +245,10 @@ func (c *ConnectConnection) handleMessage(ctx context.Context, msg *pb.ClientMes
 	)
 	defer span.Finish()
 
+	if err := c.authorizeMessage(ctx, msg); err != nil {
+		return err
+	}
+
 	switch m := msg.Message.(type) {
 	case *pb.ClientMessage_CreateSession:
 		return c.handleSessionCreate(ctx, m.CreateSession)
@@ -282,6 +299,30 @@ func (c *ConnectConnection) handleMessage(ctx context.Context, msg *pb.ClientMes
 	default:
 		return connect.NewError(connect.CodeInvalidArgument, errUnknownMessage)
 	}
+}
+
+func (c *ConnectConnection) authorizeMessage(ctx context.Context, msg *pb.ClientMessage) error {
+	if c.role == ClientRoleAdmin {
+		return nil
+	}
+
+	var sessionID string
+	switch m := msg.Message.(type) {
+	case *pb.ClientMessage_CreateSession:
+		return nil
+	case *pb.ClientMessage_OpenSession:
+		sessionID = m.OpenSession.SessionId
+	case *pb.ClientMessage_DeleteSession:
+		sessionID = m.DeleteSession.SessionId
+	default:
+		return connect.NewError(connect.CodePermissionDenied, errPermissionDenied)
+	}
+
+	sess, err := c.manager.Get(ctx, sessionID)
+	if err != nil || sess.Owner != string(c.role) {
+		return connect.NewError(connect.CodePermissionDenied, errPermissionDenied)
+	}
+	return nil
 }
 
 // send sends a message to the client.
@@ -445,7 +486,7 @@ func (c *ConnectConnection) handleSessionCreate(ctx context.Context, req *pb.Cre
 		name = *req.Name
 	}
 
-	sess, err := c.manager.Create(ctx, name, repos, repoAccessPtr, sdkTypePtr, modelPtr, copilotBackendPtr, tailnetAccessPtr, resourcesPtr)
+	sess, err := c.manager.Create(ctx, string(c.role), name, repos, repoAccessPtr, sdkTypePtr, modelPtr, copilotBackendPtr, tailnetAccessPtr, resourcesPtr)
 	if err != nil {
 		return err
 	}

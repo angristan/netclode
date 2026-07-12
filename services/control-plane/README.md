@@ -28,9 +28,10 @@ services/control-plane/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `3000` | HTTP port (health checks) |
-| `CONNECT_PORT` | `3001` | Connect protocol port |
-| `AGENT_PORT` | `3002` | Agent Connect port |
+| `CLIENT_PORT` | `3000` | Tailscale-only ClientService listener |
+| `AGENT_PORT` | `3001` | Sandbox AgentService listener |
+| `INTERNAL_PORT` | `3002` | Secret-proxy validation listener |
+| `BOT_PORT` | `3003` | Authenticated GitHub bot listener |
 | `K8S_NAMESPACE` | `netclode` | Kubernetes namespace |
 | `AGENT_IMAGE` | `ghcr.io/angristan/netclode-agent:latest` | Agent image |
 | `SANDBOX_TEMPLATE` | `netclode-agent` | SandboxTemplate name |
@@ -45,7 +46,9 @@ services/control-plane/
 
 ## Connect API
 
-Connect to port `3001` using Connect protocol (gRPC-compatible). See `proto/netclode/v1/client.proto` for full definitions.
+Human clients connect to port `3000` through Tailscale Ingress. Sandboxes can reach only
+the AgentService listener on port `3001`; internal workloads use projected Kubernetes identity.
+See `proto/netclode/v1/client.proto` for the client protocol.
 
 ### Bidirectional streaming
 

@@ -89,6 +89,7 @@ func (r *RedisStorage) SaveSession(ctx context.Context, s *pb.Session) error {
 	pipe.SAdd(ctx, keySessionsAll, s.Id)
 	pipe.HSet(ctx, sessionKey(s.Id),
 		"name", s.Name,
+		"owner", s.Owner,
 		"status", s.Status.String(),
 		"createdAt", s.CreatedAt.AsTime().Format(time.RFC3339),
 		"lastActiveAt", s.LastActiveAt.AsTime().Format(time.RFC3339),
@@ -127,6 +128,7 @@ func (r *RedisStorage) GetSession(ctx context.Context, id string) (*pb.Session, 
 	session := &pb.Session{
 		Id:     id,
 		Name:   data["name"],
+		Owner:  data["owner"],
 		Status: parseSessionStatus(data["status"]),
 	}
 	if t, err := time.Parse(time.RFC3339, data["createdAt"]); err == nil {

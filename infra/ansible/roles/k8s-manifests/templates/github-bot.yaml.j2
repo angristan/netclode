@@ -1,3 +1,10 @@
+# Dedicated workload identity for the GitHub bot.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-bot
+  namespace: netclode
+---
 # GitHub Bot Deployment
 apiVersion: apps/v1
 kind: Deployment
@@ -20,6 +27,8 @@ spec:
         ad.datadoghq.com/github-bot.logs: '[{"source": "go", "service": "github-bot"}]'
 {% endif %}
     spec:
+      serviceAccountName: github-bot
+      automountServiceAccountToken: false
       containers:
         - name: github-bot
           image: ghcr.io/angristan/netclode-github-bot:latest
@@ -30,7 +39,9 @@ spec:
             - name: PORT
               value: "8080"
             - name: CONTROL_PLANE_URL
-              value: "http://control-plane.netclode.svc.cluster.local:80"
+              value: "http://control-plane-bot.netclode.svc.cluster.local:3003"
+            - name: CONTROL_PLANE_TOKEN_PATH
+              value: "/var/run/secrets/control-plane-auth/token"
             - name: REDIS_URL
               value: "redis://redis-sessions.netclode.svc.cluster.local:6379"
             - name: GITHUB_APP_ID
@@ -88,6 +99,10 @@ spec:
             - name: DD_GIT_COMMIT_SHA
               value: "{{ dd_git_commit_sha }}"
 {% endif %}
+          volumeMounts:
+            - name: control-plane-auth
+              mountPath: /var/run/secrets/control-plane-auth
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /health
@@ -100,6 +115,14 @@ spec:
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 20
+      volumes:
+        - name: control-plane-auth
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+                  audience: netclode-client
 ---
 # GitHub Bot Service
 apiVersion: v1

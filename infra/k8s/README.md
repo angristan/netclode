@@ -338,11 +338,14 @@ kubectl $CTX scale deployment coredns -n kube-system --replicas=2
 - Verify warm pool has available pods: `kubectl get pods -n netclode -l agents.x-k8s.io/pool`
 
 **Agent not connecting:**
-- Verify agent can reach control-plane: `curl http://control-plane.netclode.svc.cluster.local:3000/health`
+- Verify agent can reach its isolated listener: `curl http://control-plane-agent.netclode.svc.cluster.local:3001/health`
 
 ## Control Plane Exposure
 
 The control plane is exposed via Tailscale Ingress with HTTPS and automatic Let's Encrypt certificates.
+The client listener intentionally has no second application credential: Tailscale identity and ACLs
+are the authentication boundary. Restrict the ingress destination to trusted user/device identities;
+do not grant the Netclode host identity or sandbox identities access to it.
 
 ### Architecture
 

@@ -65,7 +65,7 @@ func main() {
 	}
 
 	// Initialize control-plane client
-	cp := controlplane.New(cfg.ControlPlaneURL)
+	cp := controlplane.New(cfg.ControlPlaneURL, cfg.ControlPlaneTokenPath)
 
 	// Initialize Redis store (dedup + in-flight tracking)
 	st, err := store.New(cfg.RedisURL)

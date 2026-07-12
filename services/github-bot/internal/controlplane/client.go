@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 
 	httptrace "github.com/DataDog/dd-trace-go/contrib/net/http/v2"
@@ -24,7 +25,7 @@ type Client struct {
 // New creates a new control-plane client.
 // Uses h2c (HTTP/2 cleartext) for in-cluster plaintext connections,
 // which is required for Connect protocol bidi streaming.
-func New(baseURL string) *Client {
+func New(baseURL, tokenPath string) *Client {
 	h2cTransport := &http2.Transport{
 		AllowHTTP: true,
 		DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
@@ -32,13 +33,36 @@ func New(baseURL string) *Client {
 		},
 	}
 	httpClient := &http.Client{
-		Transport: httptrace.WrapRoundTripper(h2cTransport,
-			httptrace.WithService("control-plane"),
-		),
+		Transport: &bearerFileRoundTripper{
+			tokenPath: tokenPath,
+			next: httptrace.WrapRoundTripper(h2cTransport,
+				httptrace.WithService("control-plane"),
+			),
+		},
 	}
 	return &Client{
 		client: netclodev1connect.NewClientServiceClient(httpClient, baseURL),
 	}
+}
+
+type bearerFileRoundTripper struct {
+	tokenPath string
+	next      http.RoundTripper
+}
+
+func (t *bearerFileRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	token, err := os.ReadFile(t.tokenPath)
+	if err != nil {
+		return nil, fmt.Errorf("read control-plane token: %w", err)
+	}
+	trimmedToken := strings.TrimSpace(string(token))
+	if trimmedToken == "" {
+		return nil, fmt.Errorf("control-plane token is empty")
+	}
+	cloned := req.Clone(req.Context())
+	cloned.Header = req.Header.Clone()
+	cloned.Header.Set("Authorization", "Bearer "+trimmedToken)
+	return t.next.RoundTrip(cloned)
 }
 
 // RunSessionOpts contains options for running a session.

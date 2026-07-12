@@ -26,10 +26,22 @@ spec:
           image: ghcr.io/angristan/netclode-control-plane:latest
           ports:
             - containerPort: 3000
-              name: http
+              name: client
+            - containerPort: 3001
+              name: agent
+            - containerPort: 3002
+              name: internal
+            - containerPort: 3003
+              name: bot
           env:
-            - name: PORT
+            - name: CLIENT_PORT
               value: "3000"
+            - name: AGENT_PORT
+              value: "3001"
+            - name: INTERNAL_PORT
+              value: "3002"
+            - name: BOT_PORT
+              value: "3003"
             - name: K8S_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -173,11 +185,11 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 20
 ---
-# Control Plane Service
+# Tailscale-only human client service
 apiVersion: v1
 kind: Service
 metadata:
-  name: control-plane
+  name: control-plane-client
   namespace: netclode
   labels:
     app: control-plane
@@ -188,6 +200,85 @@ spec:
   ports:
     - port: 80
       targetPort: 3000
-      name: http
-# Note: iOS clients connect via Tailscale Ingress (see control-plane-ingress.yaml)
-# Internal agents connect via h2c on this service (port 80)
+      name: client
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane-agent
+  namespace: netclode
+spec:
+  selector:
+    app: control-plane
+  ports:
+    - port: 3001
+      targetPort: 3001
+      name: agent
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane-internal
+  namespace: netclode
+spec:
+  selector:
+    app: control-plane
+  ports:
+    - port: 3002
+      targetPort: 3002
+      name: internal
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane-bot
+  namespace: netclode
+spec:
+  selector:
+    app: control-plane
+  ports:
+    - port: 3003
+      targetPort: 3003
+      name: bot
+---
+# Each listener is reachable only from its intended trust domain.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: control-plane-ingress
+  namespace: netclode
+spec:
+  podSelector:
+    matchLabels:
+      app: control-plane
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tailscale
+      ports:
+        - protocol: TCP
+          port: 3000
+    - from:
+        - podSelector:
+            matchLabels:
+              netclode.io/component: agent
+      ports:
+        - protocol: TCP
+          port: 3001
+    - from:
+        - podSelector:
+            matchLabels:
+              app: secret-proxy
+      ports:
+        - protocol: TCP
+          port: 3002
+    - from:
+        - podSelector:
+            matchLabels:
+              app: github-bot
+      ports:
+        - protocol: TCP
+          port: 3003

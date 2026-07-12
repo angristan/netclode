@@ -351,6 +351,9 @@ public struct Netclode_V1_Session: Sendable {
   /// Clears the value of `copilotBackend`. Subsequent reads from it will return its default value.
   public mutating func clearCopilotBackend() {self._copilotBackend = nil}
 
+  /// Authenticated creator: "admin" or "github-bot".
+  public var owner: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -579,61 +582,70 @@ public struct Netclode_V1_SessionConfig: @unchecked Sendable {
 
 /// StreamEntry represents a single entry in the unified session stream.
 /// All content flows through this type - messages, events, terminal output, etc.
-public struct Netclode_V1_StreamEntry: Sendable {
+public struct Netclode_V1_StreamEntry: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   /// Redis Stream ID
-  public var id: String = String()
+  public var id: String {
+    get {_storage._id}
+    set {_uniqueStorage()._id = newValue}
+  }
 
   public var timestamp: SwiftProtobuf.Google_Protobuf_Timestamp {
-    get {_timestamp ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
-    set {_timestamp = newValue}
+    get {_storage._timestamp ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_uniqueStorage()._timestamp = newValue}
   }
   /// Returns true if `timestamp` has been explicitly set.
-  public var hasTimestamp: Bool {self._timestamp != nil}
+  public var hasTimestamp: Bool {_storage._timestamp != nil}
   /// Clears the value of `timestamp`. Subsequent reads from it will return its default value.
-  public mutating func clearTimestamp() {self._timestamp = nil}
+  public mutating func clearTimestamp() {_uniqueStorage()._timestamp = nil}
 
   /// true = streaming delta, false = final
-  public var partial: Bool = false
+  public var partial: Bool {
+    get {_storage._partial}
+    set {_uniqueStorage()._partial = newValue}
+  }
 
-  public var payload: Netclode_V1_StreamEntry.OneOf_Payload? = nil
+  public var payload: OneOf_Payload? {
+    get {return _storage._payload}
+    set {_uniqueStorage()._payload = newValue}
+  }
 
   /// All agent content (messages, thinking, tools)
   public var event: Netclode_V1_AgentEvent {
     get {
-      if case .event(let v)? = payload {return v}
+      if case .event(let v)? = _storage._payload {return v}
       return Netclode_V1_AgentEvent()
     }
-    set {payload = .event(newValue)}
+    set {_uniqueStorage()._payload = .event(newValue)}
   }
 
   /// Terminal data
   public var terminalOutput: Netclode_V1_TerminalOutput {
     get {
-      if case .terminalOutput(let v)? = payload {return v}
+      if case .terminalOutput(let v)? = _storage._payload {return v}
       return Netclode_V1_TerminalOutput()
     }
-    set {payload = .terminalOutput(newValue)}
+    set {_uniqueStorage()._payload = .terminalOutput(newValue)}
   }
 
   /// Status changes
   public var sessionUpdate: Netclode_V1_Session {
     get {
-      if case .sessionUpdate(let v)? = payload {return v}
+      if case .sessionUpdate(let v)? = _storage._payload {return v}
       return Netclode_V1_Session()
     }
-    set {payload = .sessionUpdate(newValue)}
+    set {_uniqueStorage()._payload = .sessionUpdate(newValue)}
   }
 
   public var error: Netclode_V1_Error {
     get {
-      if case .error(let v)? = payload {return v}
+      if case .error(let v)? = _storage._payload {return v}
       return Netclode_V1_Error()
     }
-    set {payload = .error(newValue)}
+    set {_uniqueStorage()._payload = .error(newValue)}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -651,7 +663,7 @@ public struct Netclode_V1_StreamEntry: Sendable {
 
   public init() {}
 
-  fileprivate var _timestamp: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 /// TerminalOutput represents terminal output data.
@@ -1014,7 +1026,7 @@ extension Netclode_V1_GitFileStatus: SwiftProtobuf._ProtoNameProviding {
 
 extension Netclode_V1_Session: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Session"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}name\0\u{1}status\0\u{1}repos\0\u{3}repo_access\0\u{3}created_at\0\u{3}last_active_at\0\u{3}sdk_type\0\u{1}model\0\u{3}copilot_backend\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}name\0\u{1}status\0\u{1}repos\0\u{3}repo_access\0\u{3}created_at\0\u{3}last_active_at\0\u{3}sdk_type\0\u{1}model\0\u{3}copilot_backend\0\u{1}owner\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1032,6 +1044,7 @@ extension Netclode_V1_Session: SwiftProtobuf.Message, SwiftProtobuf._MessageImpl
       case 8: try { try decoder.decodeSingularEnumField(value: &self._sdkType) }()
       case 9: try { try decoder.decodeSingularStringField(value: &self._model) }()
       case 10: try { try decoder.decodeSingularEnumField(value: &self._copilotBackend) }()
+      case 11: try { try decoder.decodeSingularStringField(value: &self.owner) }()
       default: break
       }
     }
@@ -1072,6 +1085,9 @@ extension Netclode_V1_Session: SwiftProtobuf.Message, SwiftProtobuf._MessageImpl
     try { if let v = self._copilotBackend {
       try visitor.visitSingularEnumField(value: v, fieldNumber: 10)
     } }()
+    if !self.owner.isEmpty {
+      try visitor.visitSingularStringField(value: self.owner, fieldNumber: 11)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1086,6 +1102,7 @@ extension Netclode_V1_Session: SwiftProtobuf.Message, SwiftProtobuf._MessageImpl
     if lhs._sdkType != rhs._sdkType {return false}
     if lhs._model != rhs._model {return false}
     if lhs._copilotBackend != rhs._copilotBackend {return false}
+    if lhs.owner != rhs.owner {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -1335,113 +1352,155 @@ extension Netclode_V1_StreamEntry: SwiftProtobuf.Message, SwiftProtobuf._Message
   public static let protoMessageName: String = _protobuf_package + ".StreamEntry"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}timestamp\0\u{1}partial\0\u{1}event\0\u{3}terminal_output\0\u{3}session_update\0\u{1}error\0")
 
+  fileprivate class _StorageClass {
+    var _id: String = String()
+    var _timestamp: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+    var _partial: Bool = false
+    var _payload: Netclode_V1_StreamEntry.OneOf_Payload?
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _id = source._id
+      _timestamp = source._timestamp
+      _partial = source._partial
+      _payload = source._payload
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.id) }()
-      case 2: try { try decoder.decodeSingularMessageField(value: &self._timestamp) }()
-      case 3: try { try decoder.decodeSingularBoolField(value: &self.partial) }()
-      case 4: try {
-        var v: Netclode_V1_AgentEvent?
-        var hadOneofValue = false
-        if let current = self.payload {
-          hadOneofValue = true
-          if case .event(let m) = current {v = m}
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._id) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._timestamp) }()
+        case 3: try { try decoder.decodeSingularBoolField(value: &_storage._partial) }()
+        case 4: try {
+          var v: Netclode_V1_AgentEvent?
+          var hadOneofValue = false
+          if let current = _storage._payload {
+            hadOneofValue = true
+            if case .event(let m) = current {v = m}
+          }
+          try decoder.decodeSingularMessageField(value: &v)
+          if let v = v {
+            if hadOneofValue {try decoder.handleConflictingOneOf()}
+            _storage._payload = .event(v)
+          }
+        }()
+        case 5: try {
+          var v: Netclode_V1_TerminalOutput?
+          var hadOneofValue = false
+          if let current = _storage._payload {
+            hadOneofValue = true
+            if case .terminalOutput(let m) = current {v = m}
+          }
+          try decoder.decodeSingularMessageField(value: &v)
+          if let v = v {
+            if hadOneofValue {try decoder.handleConflictingOneOf()}
+            _storage._payload = .terminalOutput(v)
+          }
+        }()
+        case 6: try {
+          var v: Netclode_V1_Session?
+          var hadOneofValue = false
+          if let current = _storage._payload {
+            hadOneofValue = true
+            if case .sessionUpdate(let m) = current {v = m}
+          }
+          try decoder.decodeSingularMessageField(value: &v)
+          if let v = v {
+            if hadOneofValue {try decoder.handleConflictingOneOf()}
+            _storage._payload = .sessionUpdate(v)
+          }
+        }()
+        case 7: try {
+          var v: Netclode_V1_Error?
+          var hadOneofValue = false
+          if let current = _storage._payload {
+            hadOneofValue = true
+            if case .error(let m) = current {v = m}
+          }
+          try decoder.decodeSingularMessageField(value: &v)
+          if let v = v {
+            if hadOneofValue {try decoder.handleConflictingOneOf()}
+            _storage._payload = .error(v)
+          }
+        }()
+        default: break
         }
-        try decoder.decodeSingularMessageField(value: &v)
-        if let v = v {
-          if hadOneofValue {try decoder.handleConflictingOneOf()}
-          self.payload = .event(v)
-        }
-      }()
-      case 5: try {
-        var v: Netclode_V1_TerminalOutput?
-        var hadOneofValue = false
-        if let current = self.payload {
-          hadOneofValue = true
-          if case .terminalOutput(let m) = current {v = m}
-        }
-        try decoder.decodeSingularMessageField(value: &v)
-        if let v = v {
-          if hadOneofValue {try decoder.handleConflictingOneOf()}
-          self.payload = .terminalOutput(v)
-        }
-      }()
-      case 6: try {
-        var v: Netclode_V1_Session?
-        var hadOneofValue = false
-        if let current = self.payload {
-          hadOneofValue = true
-          if case .sessionUpdate(let m) = current {v = m}
-        }
-        try decoder.decodeSingularMessageField(value: &v)
-        if let v = v {
-          if hadOneofValue {try decoder.handleConflictingOneOf()}
-          self.payload = .sessionUpdate(v)
-        }
-      }()
-      case 7: try {
-        var v: Netclode_V1_Error?
-        var hadOneofValue = false
-        if let current = self.payload {
-          hadOneofValue = true
-          if case .error(let m) = current {v = m}
-        }
-        try decoder.decodeSingularMessageField(value: &v)
-        if let v = v {
-          if hadOneofValue {try decoder.handleConflictingOneOf()}
-          self.payload = .error(v)
-        }
-      }()
-      default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    if !self.id.isEmpty {
-      try visitor.visitSingularStringField(value: self.id, fieldNumber: 1)
-    }
-    try { if let v = self._timestamp {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
-    } }()
-    if self.partial != false {
-      try visitor.visitSingularBoolField(value: self.partial, fieldNumber: 3)
-    }
-    switch self.payload {
-    case .event?: try {
-      guard case .event(let v)? = self.payload else { preconditionFailure() }
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
-    }()
-    case .terminalOutput?: try {
-      guard case .terminalOutput(let v)? = self.payload else { preconditionFailure() }
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
-    }()
-    case .sessionUpdate?: try {
-      guard case .sessionUpdate(let v)? = self.payload else { preconditionFailure() }
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
-    }()
-    case .error?: try {
-      guard case .error(let v)? = self.payload else { preconditionFailure() }
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
-    }()
-    case nil: break
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._id.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._id, fieldNumber: 1)
+      }
+      try { if let v = _storage._timestamp {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+      if _storage._partial != false {
+        try visitor.visitSingularBoolField(value: _storage._partial, fieldNumber: 3)
+      }
+      switch _storage._payload {
+      case .event?: try {
+        guard case .event(let v)? = _storage._payload else { preconditionFailure() }
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+      }()
+      case .terminalOutput?: try {
+        guard case .terminalOutput(let v)? = _storage._payload else { preconditionFailure() }
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      }()
+      case .sessionUpdate?: try {
+        guard case .sessionUpdate(let v)? = _storage._payload else { preconditionFailure() }
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+      }()
+      case .error?: try {
+        guard case .error(let v)? = _storage._payload else { preconditionFailure() }
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
+      }()
+      case nil: break
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Netclode_V1_StreamEntry, rhs: Netclode_V1_StreamEntry) -> Bool {
-    if lhs.id != rhs.id {return false}
-    if lhs._timestamp != rhs._timestamp {return false}
-    if lhs.partial != rhs.partial {return false}
-    if lhs.payload != rhs.payload {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._id != rhs_storage._id {return false}
+        if _storage._timestamp != rhs_storage._timestamp {return false}
+        if _storage._partial != rhs_storage._partial {return false}
+        if _storage._payload != rhs_storage._payload {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

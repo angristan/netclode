@@ -10,7 +10,7 @@ plugins:
     out: ../services/control-plane/gen
     opt: paths=source_relative
   # Go gRPC
-  - remote: buf.build/grpc/go
+  - remote: buf.build/grpc/go:v1.6.1
     out: ../services/control-plane/gen
     opt: paths=source_relative
   # Go Connect (for agent client)
@@ -23,7 +23,7 @@ plugins:
     opt:
       - target=ts
   # Swift protobuf (SwiftProtobuf messages)
-  - remote: buf.build/apple/swift
+  - remote: buf.build/apple/swift:v1.37.0
     out: ../clients/ios/Netclode/Generated
     opt:
       - Visibility=Public

@@ -63,7 +63,10 @@ func run() error {
 	// Load configuration
 	cfg := config.Load()
 	slog.Info("Configuration loaded",
-		"port", cfg.Port,
+		"clientPort", cfg.ClientPort,
+		"agentPort", cfg.AgentPort,
+		"internalPort", cfg.InternalPort,
+		"botPort", cfg.BotPort,
 		"namespace", cfg.K8sNamespace,
 		"agentImage", cfg.AgentImage,
 		"redisURL", storage.ParseRedisURL(cfg.RedisURL),
@@ -127,9 +130,14 @@ func run() error {
 		cancel()
 	}()
 
-	// Start server (blocks until shutdown)
-	httpAddr := fmt.Sprintf(":%d", cfg.Port)
-	if err := server.ListenAndServe(ctx, httpAddr); err != nil {
+	// Start the isolated client, agent, internal, and bot listeners.
+	addresses := api.ListenAddresses{
+		Client:   fmt.Sprintf(":%d", cfg.ClientPort),
+		Agent:    fmt.Sprintf(":%d", cfg.AgentPort),
+		Internal: fmt.Sprintf(":%d", cfg.InternalPort),
+		Bot:      fmt.Sprintf(":%d", cfg.BotPort),
+	}
+	if err := server.ListenAndServe(ctx, addresses); err != nil {
 		return fmt.Errorf("server error: %w", err)
 	}
 
