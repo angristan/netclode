@@ -22,6 +22,10 @@ metadata:
     app: redis-juicefs
 spec:
   replicas: 1
+  # RWO PVC: the new pod can't attach the volume while the old one holds it,
+  # so RollingUpdate would deadlock.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: redis-juicefs
