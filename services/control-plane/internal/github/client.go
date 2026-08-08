@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	httptrace "github.com/DataDog/dd-trace-go/contrib/net/http/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // RepoAccess specifies the level of access for repository operations.
@@ -48,9 +48,10 @@ func NewClient(appID, installationID int64, privateKeyPEM string) (*Client, erro
 		appID:          appID,
 		installationID: installationID,
 		privateKey:     privateKey,
-		httpClient: httptrace.WrapClient(&http.Client{
-			Timeout: 30 * time.Second,
-		}, httptrace.WithService("github-api")),
+		httpClient: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: otelhttp.NewTransport(nil),
+		},
 	}, nil
 }
 

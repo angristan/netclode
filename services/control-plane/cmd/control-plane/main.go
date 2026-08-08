@@ -7,48 +7,36 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
-	slogtrace "github.com/DataDog/dd-trace-go/contrib/log/slog/v2"
-	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
-	"github.com/DataDog/dd-trace-go/v2/profiler"
+	"time"
 
 	"github.com/angristan/netclode/services/control-plane/internal/api"
 	"github.com/angristan/netclode/services/control-plane/internal/config"
 	"github.com/angristan/netclode/services/control-plane/internal/github"
 	"github.com/angristan/netclode/services/control-plane/internal/k8s"
-	"github.com/angristan/netclode/services/control-plane/internal/metrics"
+	"github.com/angristan/netclode/services/control-plane/internal/observability"
 	"github.com/angristan/netclode/services/control-plane/internal/session"
 	"github.com/angristan/netclode/services/control-plane/internal/storage"
 )
 
 func main() {
-	// Start Datadog tracer (reads DD_SERVICE, DD_ENV, DD_VERSION from env)
-	tracer.Start(tracer.WithRuntimeMetrics())
-	defer tracer.Stop()
-
-	// Start continuous profiler
-	if err := profiler.Start(
-		profiler.WithProfileTypes(
-			profiler.CPUProfile,
-			profiler.HeapProfile,
-			profiler.GoroutineProfile,
-		),
-	); err != nil {
-		slog.Warn("Failed to start profiler", "error", err)
-	}
-	defer profiler.Stop()
-
-	// Configure structured logging with Datadog trace correlation
-	logger := slog.New(slogtrace.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	// Configure structured logging with trace correlation
+	logger := slog.New(observability.NewLogHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
 	slog.SetDefault(logger)
 
-	// Initialize DogStatsD metrics client
-	if err := metrics.Init(); err != nil {
-		slog.Warn("Failed to init metrics client", "error", err)
+	// Initialize OpenTelemetry traces and metrics
+	shutdown, err := observability.Setup(context.Background(), "control-plane")
+	if err != nil {
+		slog.Warn("Failed to set up OpenTelemetry", "error", err)
 	}
-	defer metrics.Close()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdown(ctx); err != nil {
+			slog.Warn("OpenTelemetry shutdown failed", "error", err)
+		}
+	}()
 
 	if err := run(); err != nil {
 		slog.Error("Fatal error", "error", err)

@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	httptrace "github.com/DataDog/dd-trace-go/contrib/net/http/v2"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	pb "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
 	"github.com/angristan/netclode/services/control-plane/gen/netclode/v1/netclodev1connect"
@@ -144,7 +144,8 @@ func (s *Server) ListenAndServe(ctx context.Context, addresses ListenAddresses) 
 }
 
 func newHTTPServer(addr string, handler http.Handler) *http.Server {
-	tracedHandler := httptrace.WrapHandler(handler, "control-plane", "http.request")
+	// Wrap with OpenTelemetry tracing to capture HTTP spans
+	tracedHandler := otelhttp.NewHandler(handler, "http.request")
 	return &http.Server{
 		Addr:    addr,
 		Handler: h2c.NewHandler(tracedHandler, &http2.Server{}),

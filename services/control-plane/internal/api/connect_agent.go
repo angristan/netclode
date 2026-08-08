@@ -10,7 +10,9 @@ import (
 	"sync"
 
 	"connectrpc.com/connect"
-	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	v1 "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
 	"github.com/angristan/netclode/services/control-plane/gen/netclode/v1/netclodev1connect"
@@ -299,11 +301,13 @@ func agentMessageTypeName(msg *v1.AgentMessage) string {
 // handleMessage processes an incoming message from the agent.
 func (c *AgentConnection) handleMessage(ctx context.Context, msg *v1.AgentMessage) error {
 	methodName := agentMessageTypeName(msg)
-	span, ctx := tracer.StartSpanFromContext(ctx, "connectrpc.agent."+methodName,
-		tracer.Tag("rpc.method", methodName),
-		tracer.Tag("session.id", c.sessionID),
+	ctx, span := otel.Tracer("control-plane").Start(ctx, "connectrpc.agent."+methodName,
+		trace.WithAttributes(
+			attribute.String("rpc.method", methodName),
+			attribute.String("session.id", c.sessionID),
+		),
 	)
-	defer span.Finish()
+	defer span.End()
 
 	switch m := msg.Message.(type) {
 	case *v1.AgentMessage_PromptResponse:

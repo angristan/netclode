@@ -8,10 +8,9 @@ import (
 	"strings"
 	"time"
 
-	redistrace "github.com/DataDog/dd-trace-go/contrib/redis/go-redis.v9/v2"
-
 	pb "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
 	"github.com/angristan/netclode/services/control-plane/internal/config"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -53,8 +52,13 @@ func NewRedisStorage(ctx context.Context, cfg *config.Config) (*RedisStorage, er
 
 	client := redis.NewClient(opts)
 
-	// Add Datadog tracing hooks to all Redis commands
-	redistrace.WrapClient(client, redistrace.WithService("control-plane-redis"))
+	// Add OpenTelemetry tracing and metrics hooks to all Redis commands
+	if err := redisotel.InstrumentTracing(client); err != nil {
+		slog.WarnContext(ctx, "Failed to instrument Redis tracing", "error", err)
+	}
+	if err := redisotel.InstrumentMetrics(client); err != nil {
+		slog.WarnContext(ctx, "Failed to instrument Redis metrics", "error", err)
+	}
 
 	// Retry connection with backoff
 	var lastErr error

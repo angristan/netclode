@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	pb "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
 	"github.com/angristan/netclode/services/control-plane/gen/netclode/v1/netclodev1connect"
@@ -240,10 +242,10 @@ func messageTypeName(msg *pb.ClientMessage) string {
 // handleMessage dispatches a client message to the appropriate handler.
 func (c *ConnectConnection) handleMessage(ctx context.Context, msg *pb.ClientMessage) error {
 	methodName := messageTypeName(msg)
-	span, ctx := tracer.StartSpanFromContext(ctx, "connectrpc.client."+methodName,
-		tracer.Tag("rpc.method", methodName),
+	ctx, span := otel.Tracer("control-plane").Start(ctx, "connectrpc.client."+methodName,
+		trace.WithAttributes(attribute.String("rpc.method", methodName)),
 	)
-	defer span.Finish()
+	defer span.End()
 
 	if err := c.authorizeMessage(ctx, msg); err != nil {
 		return err

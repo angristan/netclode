@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	kubernetestrace "github.com/DataDog/dd-trace-go/contrib/k8s.io/client-go/v2/kubernetes"
-	httptrace "github.com/DataDog/dd-trace-go/contrib/net/http/v2"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/angristan/netclode/services/control-plane/internal/config"
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -65,10 +65,10 @@ func newK8sRuntime(cfg *config.Config) (*k8sRuntime, error) {
 		return nil, fmt.Errorf("get in-cluster config: %w", err)
 	}
 
-	// Add Datadog tracing to all K8s API calls (separate service for APM service map)
-	restConfig.WrapTransport = kubernetestrace.WrapRoundTripperFunc(
-		httptrace.WithService("kubernetes-api"),
-	)
+	// Add OpenTelemetry tracing to all K8s API calls
+	restConfig.Wrap(func(rt http.RoundTripper) http.RoundTripper {
+		return otelhttp.NewTransport(rt)
+	})
 
 	dynamicClient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
