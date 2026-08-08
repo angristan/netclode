@@ -4,6 +4,11 @@ modules:
 lint:
   use:
     - STANDARD
+  except:
+    # The bidirectional streams reuse AgentMessage/ClientMessage envelopes;
+    # renaming them to *ConnectRequest/*ConnectResponse would break all clients.
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
 breaking:
   use:
     - FILE

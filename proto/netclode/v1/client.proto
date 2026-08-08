@@ -3,7 +3,6 @@ syntax = "proto3";
 package netclode.v1;
 
 import "netclode/v1/common.proto";
-import "netclode/v1/events.proto";
 import "google/protobuf/timestamp.proto";
 
 // ClientService handles communication between clients and the control plane.

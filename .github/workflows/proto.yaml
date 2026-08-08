@@ -1,0 +1,37 @@
+name: Proto
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "proto/**"
+      - ".github/workflows/proto.yaml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "proto/**"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Lint
+        working-directory: proto
+        run: buf lint
+
+      # Informational only: AGENTS.md prefers breaking changes over
+      # backwards compatibility, so this reports but does not block.
+      - name: Breaking changes vs master
+        if: github.event_name == 'pull_request'
+        working-directory: proto
+        run: buf breaking --against "https://github.com/${GITHUB_REPOSITORY}.git#branch=master,subdir=proto"
+        continue-on-error: true

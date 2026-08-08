@@ -32,8 +32,8 @@ proto: proto-setup ## Generate code from proto files
 proto-lint: proto-setup ## Lint proto files
 	cd proto && buf lint
 
-proto-breaking: proto-setup ## Check for breaking changes against main
-	cd proto && buf breaking --against '.git#branch=main'
+proto-breaking: proto-setup ## Check for breaking changes against master
+	cd proto && buf breaking --against '../.git#branch=master,subdir=proto'
 
 proto-setup: ## Install buf if not present
 	@which buf > /dev/null || (echo "Installing buf..." && brew install bufbuild/buf/buf)
