@@ -71,7 +71,7 @@ export class ClaudeSDKAdapter implements SDKAdapter {
           cwd: WORKSPACE_DIR,
           permissionMode: "bypassPermissions",
           allowDangerouslySkipPermissions: true,
-          model: "claude-opus-4-5-20251101",
+          model: this.config?.model || "claude-opus-4-5-20251101",
           persistSession: true,
           includePartialMessages: true,
           maxThinkingTokens: 10000,
