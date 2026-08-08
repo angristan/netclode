@@ -111,6 +111,16 @@ func New(cfg Config, logger *slog.Logger) *Proxy {
 	proxy := goproxy.NewProxyHttpServer()
 	proxy.Verbose = cfg.Verbose
 
+	// goproxy's default transport skips upstream TLS verification
+	// (InsecureSkipVerify), which would hand real secrets to any spoofed
+	// upstream. Override it with a verifying transport.
+	proxy.Tr = &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
+	}
+
 	// Set up custom CA for MITM
 	goproxy.GoproxyCa = cfg.CA
 	goproxy.OkConnect = &goproxy.ConnectAction{Action: goproxy.ConnectMitm, TLSConfig: goproxy.TLSConfigFromCA(&cfg.CA)}
