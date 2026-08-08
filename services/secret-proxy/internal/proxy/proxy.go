@@ -24,11 +24,12 @@ import (
 	"strings"
 	"time"
 
-	httptrace "github.com/DataDog/dd-trace-go/contrib/net/http/v2"
-	"github.com/DataDog/dd-trace-go/v2/ddtrace/ext"
-	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
 	"github.com/angristan/netclode/services/secret-proxy/internal/metrics"
 	"github.com/elazarl/goproxy"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Config holds the proxy configuration.
@@ -131,9 +132,10 @@ func New(cfg Config, logger *slog.Logger) *Proxy {
 		config: cfg,
 		server: proxy,
 		logger: logger,
-		httpClient: httptrace.WrapClient(&http.Client{
-			Timeout: 10 * time.Second,
-		}, httptrace.WithService("control-plane-validation")),
+		httpClient: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: otelhttp.NewTransport(nil),
+		},
 	}
 
 	// Custom CONNECT handler to capture Proxy-Authorization header from CONNECT request
@@ -165,11 +167,11 @@ func New(cfg Config, logger *slog.Logger) *Proxy {
 
 // handleRequest processes each request and injects secrets where appropriate.
 func (p *Proxy) handleRequest(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-	span, spanCtx := tracer.StartSpanFromContext(req.Context(), "secret-proxy.handle",
-		tracer.SpanType(ext.SpanTypeWeb),
-		tracer.Tag("target.host", req.Host),
+	spanCtx, span := otel.Tracer("secret-proxy").Start(req.Context(), "secret-proxy.handle",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(attribute.String("target.host", req.Host)),
 	)
-	defer span.Finish()
+	defer span.End()
 	req = req.WithContext(spanCtx)
 
 	metrics.Incr("proxy.requests", []string{"host:" + canonicalHost(req.Host)})

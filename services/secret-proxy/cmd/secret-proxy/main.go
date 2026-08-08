@@ -1,51 +1,40 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
-
-	slogtrace "github.com/DataDog/dd-trace-go/contrib/log/slog/v2"
-	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
-	"github.com/DataDog/dd-trace-go/v2/profiler"
+	"time"
 
 	"github.com/angristan/netclode/services/secret-proxy/internal/certs"
 	"github.com/angristan/netclode/services/secret-proxy/internal/config"
-	"github.com/angristan/netclode/services/secret-proxy/internal/metrics"
+	"github.com/angristan/netclode/services/secret-proxy/internal/observability"
 	"github.com/angristan/netclode/services/secret-proxy/internal/proxy"
 )
 
 func main() {
-	// Start Datadog tracer
-	tracer.Start(tracer.WithRuntimeMetrics())
-	defer tracer.Stop()
-
-	// Start continuous profiler
-	if err := profiler.Start(
-		profiler.WithProfileTypes(
-			profiler.CPUProfile,
-			profiler.HeapProfile,
-			profiler.GoroutineProfile,
-		),
-	); err != nil {
-		slog.Warn("Failed to start profiler", "error", err)
-	}
-	defer profiler.Stop()
-
-	// Configure structured logging with Datadog trace correlation
+	// Configure structured logging with trace correlation
 	logLevel := slog.LevelInfo
 	if os.Getenv("VERBOSE") == "true" {
 		logLevel = slog.LevelDebug
 	}
-	logger := slog.New(slogtrace.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	logger := slog.New(observability.NewLogHandler(os.Stdout, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
 	slog.SetDefault(logger)
 
-	// Initialize DogStatsD metrics client
-	if err := metrics.Init(); err != nil {
-		slog.Warn("Failed to init metrics client", "error", err)
+	// Initialize OpenTelemetry traces and metrics
+	shutdown, err := observability.Setup(context.Background(), "secret-proxy")
+	if err != nil {
+		slog.Warn("Failed to set up OpenTelemetry", "error", err)
 	}
-	defer metrics.Close()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdown(ctx); err != nil {
+			slog.Warn("OpenTelemetry shutdown failed", "error", err)
+		}
+	}()
 
 	if err := run(logger); err != nil {
 		logger.Error("Fatal error", "error", err)

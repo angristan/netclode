@@ -1,66 +1,80 @@
-// Package metrics provides a DogStatsD client for custom application metrics.
+// Package metrics provides OpenTelemetry-backed helpers for custom
+// application metrics. Instruments are created lazily and cached by name;
+// all helpers are no-ops until a meter provider is installed (see the
+// observability package).
 package metrics
 
 import (
-	"fmt"
-	"os"
+	"context"
+	"strings"
+	"sync"
 
-	"github.com/DataDog/datadog-go/v5/statsd"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
-// Client is the global DogStatsD metrics client.
-// It is nil-safe: callers can use helpers without checking for nil.
-var Client *statsd.Client
+const (
+	meterName = "github.com/angristan/netclode/services/secret-proxy"
+	// prefix preserves the metric namespace used by the previous
+	// DogStatsD client so existing metric names stay stable.
+	prefix = "netclode."
+)
 
-// Init initializes the DogStatsD client.
-// Uses DD_AGENT_HOST and DD_DOGSTATSD_PORT env vars (set in K8s manifests).
-// Returns nil if the agent host is not configured (Datadog disabled).
-func Init() error {
-	host := os.Getenv("DD_AGENT_HOST")
-	if host == "" {
-		// Datadog not configured, metrics are no-ops
-		return nil
-	}
-	port := os.Getenv("DD_DOGSTATSD_PORT")
-	if port == "" {
-		port = "8125"
-	}
+var (
+	counters   sync.Map // name -> metric.Int64Counter
+	gauges     sync.Map // name -> metric.Float64Gauge
+	histograms sync.Map // name -> metric.Float64Histogram
+)
 
-	var err error
-	Client, err = statsd.New(fmt.Sprintf("%s:%s", host, port),
-		statsd.WithNamespace("netclode."),
-		statsd.WithTags([]string{
-			"service:" + os.Getenv("DD_SERVICE"),
-			"env:" + os.Getenv("DD_ENV"),
-		}),
-	)
-	return err
+// attrs converts DogStatsD-style "key:value" tags into OTel attributes.
+func attrs(tags []string) metric.MeasurementOption {
+	kvs := make([]attribute.KeyValue, 0, len(tags))
+	for _, tag := range tags {
+		k, v, ok := strings.Cut(tag, ":")
+		if !ok {
+			k, v = tag, "true"
+		}
+		kvs = append(kvs, attribute.String(k, v))
+	}
+	return metric.WithAttributes(kvs...)
 }
 
-// Close flushes and closes the metrics client.
-func Close() {
-	if Client != nil {
-		Client.Close()
-	}
-}
-
-// Incr increments a counter. No-op if Client is nil.
+// Incr increments a counter.
 func Incr(name string, tags []string) {
-	if Client != nil {
-		Client.Incr(name, tags, 1)
+	c, ok := counters.Load(name)
+	if !ok {
+		inst, err := otel.Meter(meterName).Int64Counter(prefix + name)
+		if err != nil {
+			return
+		}
+		c, _ = counters.LoadOrStore(name, inst)
 	}
+	c.(metric.Int64Counter).Add(context.Background(), 1, attrs(tags))
 }
 
-// Gauge sets a gauge value. No-op if Client is nil.
+// Gauge sets a gauge value.
 func Gauge(name string, value float64, tags []string) {
-	if Client != nil {
-		Client.Gauge(name, value, tags, 1)
+	g, ok := gauges.Load(name)
+	if !ok {
+		inst, err := otel.Meter(meterName).Float64Gauge(prefix + name)
+		if err != nil {
+			return
+		}
+		g, _ = gauges.LoadOrStore(name, inst)
 	}
+	g.(metric.Float64Gauge).Record(context.Background(), value, attrs(tags))
 }
 
-// Distribution records a distribution value. No-op if Client is nil.
+// Distribution records a value in a histogram.
 func Distribution(name string, value float64, tags []string) {
-	if Client != nil {
-		Client.Distribution(name, value, tags, 1)
+	h, ok := histograms.Load(name)
+	if !ok {
+		inst, err := otel.Meter(meterName).Float64Histogram(prefix + name)
+		if err != nil {
+			return
+		}
+		h, _ = histograms.LoadOrStore(name, inst)
 	}
+	h.(metric.Float64Histogram).Record(context.Background(), value, attrs(tags))
 }
