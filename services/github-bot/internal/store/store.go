@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	redistrace "github.com/DataDog/dd-trace-go/contrib/redis/go-redis.v9/v2"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -39,7 +39,12 @@ func New(redisURL string) (*Store, error) {
 		return nil, err
 	}
 	client := redis.NewClient(opts)
-	redistrace.WrapClient(client, redistrace.WithService("github-bot-redis"))
+	if err := redisotel.InstrumentTracing(client); err != nil {
+		slog.Warn("Failed to instrument Redis tracing", "error", err)
+	}
+	if err := redisotel.InstrumentMetrics(client); err != nil {
+		slog.Warn("Failed to instrument Redis metrics", "error", err)
+	}
 
 	return &Store{
 		rdb: client,

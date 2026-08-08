@@ -3,13 +3,13 @@ package server
 import (
 	"net/http"
 
-	httptrace "github.com/DataDog/dd-trace-go/contrib/net/http/v2"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/angristan/netclode/services/github-bot/internal/webhook"
 )
 
 // New creates a new HTTP server mux with the webhook and health endpoints.
-// The returned handler is wrapped with Datadog tracing.
+// The returned handler is wrapped with OpenTelemetry tracing.
 func New(handler *webhook.Handler) http.Handler {
 	mux := http.NewServeMux()
 
@@ -20,5 +20,5 @@ func New(handler *webhook.Handler) http.Handler {
 
 	mux.Handle("POST /webhook", handler)
 
-	return httptrace.WrapHandler(mux, "github-bot", "http.request")
+	return otelhttp.NewHandler(mux, "http.request")
 }

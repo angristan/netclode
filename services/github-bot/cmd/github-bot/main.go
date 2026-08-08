@@ -9,14 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	slogtrace "github.com/DataDog/dd-trace-go/contrib/log/slog/v2"
-	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
-	"github.com/DataDog/dd-trace-go/v2/profiler"
-
 	"github.com/angristan/netclode/services/github-bot/internal/config"
 	"github.com/angristan/netclode/services/github-bot/internal/controlplane"
 	"github.com/angristan/netclode/services/github-bot/internal/ghclient"
-	"github.com/angristan/netclode/services/github-bot/internal/metrics"
+	"github.com/angristan/netclode/services/github-bot/internal/observability"
 	"github.com/angristan/netclode/services/github-bot/internal/server"
 	"github.com/angristan/netclode/services/github-bot/internal/store"
 	"github.com/angristan/netclode/services/github-bot/internal/webhook"
@@ -24,32 +20,23 @@ import (
 )
 
 func main() {
-	// Start Datadog tracer (reads DD_SERVICE, DD_ENV, DD_VERSION from env)
-	tracer.Start(tracer.WithRuntimeMetrics())
-	defer tracer.Stop()
-
-	// Start continuous profiler
-	if err := profiler.Start(
-		profiler.WithProfileTypes(
-			profiler.CPUProfile,
-			profiler.HeapProfile,
-			profiler.GoroutineProfile,
-		),
-	); err != nil {
-		slog.Warn("Failed to start profiler", "error", err)
-	}
-	defer profiler.Stop()
-
-	// Configure structured logging with Datadog trace correlation
-	slog.SetDefault(slog.New(slogtrace.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	// Configure structured logging with trace correlation
+	slog.SetDefault(slog.New(observability.NewLogHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})))
 
-	// Initialize DogStatsD metrics client
-	if err := metrics.Init(); err != nil {
-		slog.Warn("Failed to init metrics client", "error", err)
+	// Initialize OpenTelemetry traces and metrics
+	shutdown, err := observability.Setup(context.Background(), "github-bot")
+	if err != nil {
+		slog.Warn("Failed to set up OpenTelemetry", "error", err)
 	}
-	defer metrics.Close()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdown(ctx); err != nil {
+			slog.Warn("OpenTelemetry shutdown failed", "error", err)
+		}
+	}()
 
 	cfg, err := config.Load()
 	if err != nil {

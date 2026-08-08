@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	httptrace "github.com/DataDog/dd-trace-go/contrib/net/http/v2"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	pb "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
 	"github.com/angristan/netclode/services/control-plane/gen/netclode/v1/netclodev1connect"
@@ -35,9 +35,7 @@ func New(baseURL, tokenPath string) *Client {
 	httpClient := &http.Client{
 		Transport: &bearerFileRoundTripper{
 			tokenPath: tokenPath,
-			next: httptrace.WrapRoundTripper(h2cTransport,
-				httptrace.WithService("control-plane"),
-			),
+			next:      otelhttp.NewTransport(h2cTransport),
 		},
 	}
 	return &Client{
