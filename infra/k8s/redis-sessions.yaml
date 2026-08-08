@@ -51,9 +51,9 @@ spec:
             - --appendfsync
             - everysec
             - --maxmemory
-            - 128mb
+            - 192mb
             - --maxmemory-policy
-            - allkeys-lru
+            - noeviction
           volumeMounts:
             - name: data
               mountPath: /data
