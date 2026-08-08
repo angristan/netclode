@@ -52,7 +52,7 @@ func TestVerifyWorkloadTokenBinding(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := fake.NewSimpleClientset(&corev1.Pod{
+			client := fake.NewClientset(&corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{Name: "github-bot-pod", Namespace: "netclode", UID: types.UID("pod-uid")},
 			})
 			client.PrependReactor("create", "tokenreviews", func(k8stesting.Action) (bool, runtime.Object, error) {
