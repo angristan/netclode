@@ -82,11 +82,6 @@
       vars:
         deploy_k8s_secrets: true
 
-    # Datadog monitoring (optional, requires DD_API_KEY in .env)
-    # Runs after deploy-secrets so dd_api_key is parsed from .env
-    - role: datadog
-      tags: [datadog, monitoring, k8s]
-      when: dd_api_key | default('') | length > 0
 
   post_tasks:
     - name: Display completion message

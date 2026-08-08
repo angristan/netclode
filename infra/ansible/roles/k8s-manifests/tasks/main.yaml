@@ -101,6 +101,12 @@
     definition: "{{ lookup('file', k8s_manifest_dir ~ '/redis-sessions.yaml') | from_yaml_all }}"
     kubeconfig: "{{ k3s_kubeconfig }}"
 
+- name: Deploy OpenTelemetry collector
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', k8s_manifest_dir ~ '/otel-collector.yaml') | from_yaml_all }}"
+    kubeconfig: "{{ k3s_kubeconfig }}"
+
 - name: Deploy control-plane
   kubernetes.core.k8s:
     state: present

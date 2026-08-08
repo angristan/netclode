@@ -22,10 +22,6 @@ spec:
     metadata:
       labels:
         app: github-bot
-{% if dd_api_key | default('') | length > 0 %}
-      annotations:
-        ad.datadoghq.com/github-bot.logs: '[{"source": "go", "service": "github-bot"}]'
-{% endif %}
     spec:
       serviceAccountName: github-bot
       automountServiceAccountToken: false
@@ -72,33 +68,11 @@ spec:
               value: "10m"
             - name: MAX_CONCURRENT_GITHUB_SESSIONS
               value: "{{ max_concurrent_github_sessions | default('5') }}"
-{% if dd_api_key | default('') | length > 0 %}
-            # Datadog APM + Observability
-            - name: DD_ENV
-              value: "production"
-            - name: DD_SERVICE
-              value: "github-bot"
-            - name: DD_VERSION
-              value: "{{ dd_version }}"
-            - name: DD_AGENT_HOST
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.hostIP
-            - name: DD_TRACE_AGENT_PORT
-              value: "8126"
-            - name: DD_DOGSTATSD_PORT
-              value: "8125"
-            - name: DD_LOGS_INJECTION
-              value: "true"
-            - name: DD_RUNTIME_METRICS_ENABLED
-              value: "true"
-            - name: DD_PROFILING_ENABLED
-              value: "true"
-            - name: DD_GIT_REPOSITORY_URL
-              value: "https://github.com/angristan/netclode"
-            - name: DD_GIT_COMMIT_SHA
-              value: "{{ dd_git_commit_sha }}"
-{% endif %}
+            # OpenTelemetry export (in-cluster collector)
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector:4318"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=production"
           volumeMounts:
             - name: control-plane-auth
               mountPath: /var/run/secrets/control-plane-auth

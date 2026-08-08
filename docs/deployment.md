@@ -78,12 +78,12 @@ GITHUB_INSTALLATION_ID=12345678
 # Kata VM resources (optional, defaults shown)
 # KATA_VM_CPUS=4
 # KATA_VM_MEMORY_MB=4096
-
-# Datadog observability (optional)
-# DD_API_KEY=your-datadog-api-key
-# DD_APP_KEY=your-datadog-app-key
-# DD_SITE=datadoghq.com
 ```
+
+Observability: the services export OTLP traces and metrics to an
+in-cluster OpenTelemetry collector (`infra/k8s/otel-collector.yaml`),
+which is deployed automatically. Point its `exporters` section at a
+backend to ship the data somewhere.
 
 Create a bucket (e.g., `netclode-juicefs`) with read/write credentials.
 

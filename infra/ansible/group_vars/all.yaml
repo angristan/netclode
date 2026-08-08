@@ -89,10 +89,3 @@ nvidia_enabled: "{{ lookup('env', 'NVIDIA_ENABLED') | default('false', true) | l
 # Set OLLAMA_ENABLED=true in .env to deploy Ollama with GPU support
 ollama_enabled: "{{ lookup('env', 'OLLAMA_ENABLED') | default('false', true) | lower == 'true' }}"
 
-# Datadog monitoring (optional)
-# Set DD_API_KEY in .env to deploy Datadog Agent
-dd_api_key: "{{ lookup('env', 'DD_API_KEY') | default('', true) }}"
-dd_app_key: "{{ lookup('env', 'DD_APP_KEY') | default('', true) }}"
-dd_site: "{{ lookup('env', 'DD_SITE') | default('datadoghq.com', true) }}"
-dd_version: "{{ lookup('env', 'DD_VERSION') | default('latest', true) }}"
-dd_git_commit_sha: "{{ lookup('env', 'DD_GIT_COMMIT_SHA') | default('latest', true) }}"

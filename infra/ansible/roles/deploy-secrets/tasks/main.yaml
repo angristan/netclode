@@ -56,9 +56,6 @@
         max_active_sessions: "{{ env_content_raw | regex_search('(?m)^MAX_ACTIVE_SESSIONS=(.*)$', '\\1') | first | default('5') }}"
         max_concurrent_github_sessions: "{{ env_content_raw | regex_search('(?m)^MAX_CONCURRENT_GITHUB_SESSIONS=(.*)$', '\\1') | first | default('5') }}"
         idle_timeout_minutes: "{{ env_content_raw | regex_search('(?m)^IDLE_TIMEOUT_MINUTES=(.*)$', '\\1') | first | default('0') }}"
-        dd_api_key: "{{ (env_content_raw | regex_search('(?m)^DD_API_KEY=(.*)$', '\\1') or [''])[0] }}"
-        dd_app_key: "{{ (env_content_raw | regex_search('(?m)^DD_APP_KEY=(.*)$', '\\1') or [''])[0] }}"
-        dd_site: "{{ (env_content_raw | regex_search('(?m)^DD_SITE=(.*)$', '\\1') or ['datadoghq.com'])[0] }}"
 
 # Host secrets - skip if only deploying k8s secrets
 - name: Deploy host secrets
