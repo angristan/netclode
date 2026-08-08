@@ -60,7 +60,7 @@ func main() {
 		slog.Error("Failed to create store", "error", err)
 		os.Exit(1)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 
 	// Build shared deps
 	deps := &workflow.Deps{

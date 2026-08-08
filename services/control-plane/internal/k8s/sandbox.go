@@ -2034,15 +2034,6 @@ func (r *k8sRuntime) GetPVCName(ctx context.Context, sessionID string) (string, 
 	return fmt.Sprintf("agent-home-%s", podName), nil
 }
 
-// mustParseQuantity parses a resource quantity, panicking on error (for static values)
-func mustParseQuantity(s string) corev1.ResourceList {
-	q, err := resource.ParseQuantity(s)
-	if err != nil {
-		panic(fmt.Sprintf("invalid quantity %q: %v", s, err))
-	}
-	return corev1.ResourceList{corev1.ResourceStorage: q}
-}
-
 // VerifyAgentToken validates a Kubernetes ServiceAccount token and returns the pod name.
 // This is used to verify the identity of agents connecting to the control plane,
 // preventing rogue agents from impersonating legitimate ones.

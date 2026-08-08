@@ -11,7 +11,6 @@ import (
 	pb "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
 	"github.com/angristan/netclode/services/control-plane/gen/netclode/v1/netclodev1connect"
 	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -160,15 +159,17 @@ func setupTestServer(t *testing.T, handler *mockClientServiceHandler) (string, f
 	path, h := netclodev1connect.NewClientServiceHandler(handler)
 	mux.Handle(path, h)
 
-	// Use h2c to support HTTP/2 without TLS (required for bidirectional streams)
-	h2cHandler := h2c.NewHandler(mux, &http2.Server{})
+	// Support HTTP/2 without TLS (required for bidirectional streams)
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
 
-	server := &http.Server{Handler: h2cHandler}
+	server := &http.Server{Handler: mux, Protocols: protocols}
 	go func() { _ = server.Serve(listener) }()
 
 	url := "http://" + listener.Addr().String()
@@ -436,10 +437,12 @@ func BenchmarkListSessions(b *testing.B) {
 	mux := http.NewServeMux()
 	path, h := netclodev1connect.NewClientServiceHandler(handler)
 	mux.Handle(path, h)
-	h2cHandler := h2c.NewHandler(mux, &http2.Server{})
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
 
 	listener, _ := net.Listen("tcp", "127.0.0.1:0")
-	server := &http.Server{Handler: h2cHandler}
+	server := &http.Server{Handler: mux, Protocols: protocols}
 	go func() { _ = server.Serve(listener) }()
 	defer func() { _ = server.Close() }()
 	defer func() { _ = listener.Close() }()

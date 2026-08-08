@@ -11,9 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	interruptTimeout = 5 * time.Second
-)
 
 // SendPrompt sends a prompt to the agent and streams the response.
 // If the sandbox isn't ready yet, queues the prompt to be sent when ready.
@@ -77,15 +74,9 @@ func (m *Manager) SendPrompt(ctx context.Context, sessionID, text string) error 
 	return nil
 }
 
-func (m *Manager) handleAgentError(ctx context.Context, sessionID string, err error) {
-	slog.Error("Agent error", "sessionID", sessionID, "error", err)
-	m.emitAgentError(ctx, sessionID, err.Error())
-	m.updateSessionStatus(ctx, sessionID, pb.SessionStatus_SESSION_STATUS_READY)
-}
-
 // pendingGitRequests tracks pending git status/diff requests with response channels
 type gitStatusResult struct {
-	files []pb.GitFileChange
+	files []*pb.GitFileChange
 	err   error
 }
 
@@ -101,7 +92,7 @@ var (
 )
 
 // GetGitStatus fetches git status from the agent.
-func (m *Manager) GetGitStatus(ctx context.Context, sessionID string) ([]pb.GitFileChange, error) {
+func (m *Manager) GetGitStatus(ctx context.Context, sessionID string) ([]*pb.GitFileChange, error) {
 	agent := m.GetAgentConnection(sessionID)
 	if agent == nil {
 		return nil, fmt.Errorf("no agent connected for session %s", sessionID)

@@ -144,7 +144,7 @@ func (h *proxyHandler) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 
 	// Copy response body
-	io.Copy(w, resp.Body)
+	_, _ = io.Copy(w, resp.Body)
 }
 
 func (h *proxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
@@ -167,7 +167,7 @@ func (h *proxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
 	connectReq += "\r\n"
 
 	if _, err := upstreamConn.Write([]byte(connectReq)); err != nil {
-		upstreamConn.Close()
+		_ = upstreamConn.Close()
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -179,12 +179,12 @@ func (h *proxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
 	br := bufio.NewReader(upstreamConn)
 	resp, err := http.ReadResponse(br, &http.Request{Method: http.MethodConnect})
 	if err != nil {
-		upstreamConn.Close()
+		_ = upstreamConn.Close()
 		http.Error(w, "reading upstream CONNECT response: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	if resp.StatusCode != http.StatusOK {
-		upstreamConn.Close()
+		_ = upstreamConn.Close()
 		http.Error(w, fmt.Sprintf("upstream proxy rejected CONNECT: %s", resp.Status), http.StatusBadGateway)
 		return
 	}
@@ -192,20 +192,20 @@ func (h *proxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
 	// Hijack the client connection
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
-		upstreamConn.Close()
+		_ = upstreamConn.Close()
 		http.Error(w, "hijacking not supported", http.StatusInternalServerError)
 		return
 	}
 
 	clientConn, _, err := hijacker.Hijack()
 	if err != nil {
-		upstreamConn.Close()
+		_ = upstreamConn.Close()
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Send 200 OK to client
-	clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+	_, _ = clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 
 	// If the buffered reader consumed bytes beyond the HTTP response
 	// (e.g. the start of the TLS handshake), forward them to the client
@@ -213,20 +213,20 @@ func (h *proxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
 	if br.Buffered() > 0 {
 		buffered, _ := br.Peek(br.Buffered())
 		if len(buffered) > 0 {
-			clientConn.Write(buffered)
+			_, _ = clientConn.Write(buffered)
 		}
 		// Discard so the bufio.Reader is empty
-		br.Discard(len(buffered))
+		_, _ = br.Discard(len(buffered))
 	}
 
 	// Bidirectional copy using the raw connection
 	go func() {
-		io.Copy(upstreamConn, clientConn)
-		upstreamConn.Close()
+		_, _ = io.Copy(upstreamConn, clientConn)
+		_ = upstreamConn.Close()
 	}()
 	go func() {
-		io.Copy(clientConn, upstreamConn)
-		clientConn.Close()
+		_, _ = io.Copy(clientConn, upstreamConn)
+		_ = clientConn.Close()
 	}()
 }
 

@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"time"
 
@@ -327,18 +326,10 @@ func (m *Manager) HandleTitleResponse(ctx context.Context, sessionID string, req
 
 // HandleGitStatusResponse processes git status response from agent.
 func (m *Manager) HandleGitStatusResponse(ctx context.Context, sessionID string, requestID string, files []*pb.GitFileChange) error {
-	// Convert []*pb.GitFileChange to []pb.GitFileChange for gitStatusResult
-	result := make([]pb.GitFileChange, len(files))
-	for i, f := range files {
-		if f != nil {
-			result[i] = *f
-		}
-	}
-
 	// Send to waiting request
 	pendingGitMu.Lock()
 	if ch, ok := pendingGitStatusRequests[requestID]; ok {
-		ch <- gitStatusResult{files: result, err: nil}
+		ch <- gitStatusResult{files: files, err: nil}
 	}
 	pendingGitMu.Unlock()
 
@@ -356,31 +347,3 @@ func (m *Manager) HandleGitDiffResponse(ctx context.Context, sessionID string, r
 	return nil
 }
 
-// countUserMessages counts messages with user role from the stream for turn tracking.
-func (m *Manager) countUserMessages(ctx context.Context, sessionID string) int {
-	entries, err := m.storage.GetStreamEntriesByTypes(ctx, sessionID, "0", 0, []string{storage.StreamEntryTypeEvent})
-	if err != nil {
-		return 0
-	}
-
-	count := 0
-	for _, e := range entries {
-		// Skip partial entries (streaming deltas)
-		if e.Entry.Partial {
-			continue
-		}
-
-		// Parse as AgentEvent and check for MESSAGE kind with USER role
-		var event pb.AgentEvent
-		if err := json.Unmarshal(e.Entry.Payload, &event); err != nil {
-			continue
-		}
-
-		if event.Kind == pb.AgentEventKind_AGENT_EVENT_KIND_MESSAGE {
-			if msg := event.GetMessage(); msg != nil && msg.Role == pb.MessageRole_MESSAGE_ROLE_USER {
-				count++
-			}
-		}
-	}
-	return count
-}

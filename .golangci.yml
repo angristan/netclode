@@ -1,0 +1,17 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        # Close/deadline errors on tear-down paths are not actionable
+        - (io.Closer).Close
+        - (net.Conn).SetReadDeadline
+        - (net.Conn).SetWriteDeadline
+        - (net.Conn).SetDeadline
+  exclusions:
+    rules:
+      # Tests routinely drop error returns of helpers
+      - path: _test\.go
+        linters:
+          - errcheck

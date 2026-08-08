@@ -16,8 +16,6 @@ import (
 	pb "github.com/angristan/netclode/services/control-plane/gen/netclode/v1"
 	"github.com/angristan/netclode/services/control-plane/gen/netclode/v1/netclodev1connect"
 	"github.com/angristan/netclode/services/control-plane/internal/session"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 const (
@@ -146,9 +144,14 @@ func (s *Server) ListenAndServe(ctx context.Context, addresses ListenAddresses) 
 func newHTTPServer(addr string, handler http.Handler) *http.Server {
 	// Wrap with OpenTelemetry tracing to capture HTTP spans
 	tracedHandler := otelhttp.NewHandler(handler, "http.request")
+	// Serve both HTTP/1.1 and unencrypted HTTP/2 (h2c) on the same port
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
 	return &http.Server{
-		Addr:    addr,
-		Handler: h2c.NewHandler(tracedHandler, &http2.Server{}),
+		Addr:      addr,
+		Handler:   tracedHandler,
+		Protocols: protocols,
 	}
 }
 
@@ -225,7 +228,7 @@ func (s *Server) gracefulShutdown() error {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
+	_, _ = w.Write([]byte("ok"))
 }
 
 // validateProxyAuthRequest is the request body for proxy auth validation.
@@ -252,14 +255,14 @@ func (s *Server) handleValidateProxyAuth(w http.ResponseWriter, r *http.Request)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(validateProxyAuthResponse{Error: "invalid request body"})
+		_ = json.NewEncoder(w).Encode(validateProxyAuthResponse{Error: "invalid request body"})
 		return
 	}
 
 	if req.Token == "" || req.TargetHost == "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(validateProxyAuthResponse{Error: "token and target_host required"})
+		_ = json.NewEncoder(w).Encode(validateProxyAuthResponse{Error: "token and target_host required"})
 		return
 	}
 
@@ -272,12 +275,12 @@ func (s *Server) handleValidateProxyAuth(w http.ResponseWriter, r *http.Request)
 		)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(validateProxyAuthResponse{Allowed: false, Error: err.Error()})
+		_ = json.NewEncoder(w).Encode(validateProxyAuthResponse{Allowed: false, Error: err.Error()})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(validateProxyAuthResponse{
+	_ = json.NewEncoder(w).Encode(validateProxyAuthResponse{
 		Allowed:     result.Allowed,
 		SecretKey:   result.SecretKey,
 		Placeholder: result.Placeholder,

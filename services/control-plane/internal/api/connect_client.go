@@ -180,7 +180,7 @@ func (c *ConnectConnection) run(ctx context.Context) error {
 
 		if err := c.handleMessage(ctx, msg); err != nil {
 			slog.WarnContext(ctx, "Connect handler error", "error", err)
-			c.send(makeErrorResponse("", "HANDLER_ERROR", err.Error()))
+			_ = c.send(makeErrorResponse("", "HANDLER_ERROR", err.Error()))
 		}
 	}
 }
@@ -527,15 +527,9 @@ func (c *ConnectConnection) handleSessionList(ctx context.Context) error {
 		return err
 	}
 
-	// Sessions are already pb.Session, just need to convert to pointers
-	pbSessions := make([]*pb.Session, len(sessions))
-	for i := range sessions {
-		pbSessions[i] = &sessions[i]
-	}
-
 	return c.send(&pb.ServerMessage{
 		Message: &pb.ServerMessage_SessionList{
-			SessionList: &pb.SessionListResponse{Sessions: pbSessions},
+			SessionList: &pb.SessionListResponse{Sessions: sessions},
 		},
 	})
 }
@@ -711,16 +705,10 @@ func (c *ConnectConnection) handleSync(ctx context.Context) error {
 		return err
 	}
 
-	// Sessions are already pb.SessionSummary, just need to convert to pointers
-	pbSessions := make([]*pb.SessionSummary, len(sessions))
-	for i := range sessions {
-		pbSessions[i] = &sessions[i]
-	}
-
 	return c.send(&pb.ServerMessage{
 		Message: &pb.ServerMessage_SyncResponse{
 			SyncResponse: &pb.SyncResponse{
-				Sessions:   pbSessions,
+				Sessions:   sessions,
 				ServerTime: timestamppb.Now(),
 			},
 		},
@@ -808,15 +796,9 @@ func (c *ConnectConnection) handleGitStatus(ctx context.Context, sessionID strin
 		return c.send(makeErrorResponse(sessionID, "GIT_ERROR", err.Error()))
 	}
 
-	// Files are already pb.GitFileChange, convert to pointers
-	pbFiles := make([]*pb.GitFileChange, len(files))
-	for i := range files {
-		pbFiles[i] = &files[i]
-	}
-
 	return c.send(&pb.ServerMessage{
 		Message: &pb.ServerMessage_GitStatus{
-			GitStatus: &pb.GitStatusResponse{SessionId: sessionID, Files: pbFiles},
+			GitStatus: &pb.GitStatusResponse{SessionId: sessionID, Files: files},
 		},
 	})
 }

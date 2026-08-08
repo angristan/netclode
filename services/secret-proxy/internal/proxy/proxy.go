@@ -309,7 +309,7 @@ func (p *Proxy) handleRequest(req *http.Request, ctx *goproxy.ProxyCtx) (*http.R
 	for name, values := range req.Header {
 		for i, value := range values {
 			if strings.Contains(value, authResult.Placeholder) {
-				req.Header[name][i] = strings.Replace(value, authResult.Placeholder, secretValue, -1)
+				req.Header[name][i] = strings.ReplaceAll(value, authResult.Placeholder, secretValue)
 				injected = true
 			}
 		}

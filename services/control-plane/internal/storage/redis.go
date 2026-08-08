@@ -556,19 +556,19 @@ func (r *RedisStorage) GetSnapshot(ctx context.Context, sessionID, snapshotID st
 
 	if sizeStr, ok := data["sizeBytes"]; ok {
 		var size int64
-		fmt.Sscanf(sizeStr, "%d", &size)
+		_, _ = fmt.Sscanf(sizeStr, "%d", &size)
 		snapshot.SizeBytes = size
 	}
 
 	if turnStr, ok := data["turnNumber"]; ok {
 		var turn int32
-		fmt.Sscanf(turnStr, "%d", &turn)
+		_, _ = fmt.Sscanf(turnStr, "%d", &turn)
 		snapshot.TurnNumber = turn
 	}
 
 	if msgCountStr, ok := data["messageCount"]; ok {
 		var count int32
-		fmt.Sscanf(msgCountStr, "%d", &count)
+		_, _ = fmt.Sscanf(msgCountStr, "%d", &count)
 		snapshot.MessageCount = count
 	}
 
@@ -582,7 +582,12 @@ func (r *RedisStorage) GetSnapshot(ctx context.Context, sessionID, snapshotID st
 // ListSnapshots retrieves all snapshots for a session, ordered by creation time (newest first).
 func (r *RedisStorage) ListSnapshots(ctx context.Context, sessionID string) ([]*pb.Snapshot, error) {
 	// Get all snapshot IDs from sorted set (newest first by score)
-	ids, err := r.client.ZRevRange(ctx, snapshotsSetKey(sessionID), 0, -1).Result()
+	ids, err := r.client.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:   snapshotsSetKey(sessionID),
+		Start: 0,
+		Stop:  -1,
+		Rev:   true,
+	}).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -621,19 +626,19 @@ func (r *RedisStorage) ListSnapshots(ctx context.Context, sessionID string) ([]*
 
 		if sizeStr, ok := data["sizeBytes"]; ok {
 			var size int64
-			fmt.Sscanf(sizeStr, "%d", &size)
+			_, _ = fmt.Sscanf(sizeStr, "%d", &size)
 			snapshot.SizeBytes = size
 		}
 
 		if turnStr, ok := data["turnNumber"]; ok {
 			var turn int32
-			fmt.Sscanf(turnStr, "%d", &turn)
+			_, _ = fmt.Sscanf(turnStr, "%d", &turn)
 			snapshot.TurnNumber = turn
 		}
 
 		if msgCountStr, ok := data["messageCount"]; ok {
 			var count int32
-			fmt.Sscanf(msgCountStr, "%d", &count)
+			_, _ = fmt.Sscanf(msgCountStr, "%d", &count)
 			snapshot.MessageCount = count
 		}
 

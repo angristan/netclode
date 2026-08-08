@@ -84,8 +84,8 @@ func (c *Client) GetIssue(ctx context.Context, owner, repo string, number int) (
 func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, number int, count int) ([]*github.IssueComment, error) {
 	// List all comments, we'll take the last N
 	opts := &github.IssueListCommentsOptions{
-		Sort:      github.String("created"),
-		Direction: github.String("desc"),
+		Sort:      github.Ptr("created"),
+		Direction: github.Ptr("desc"),
 		ListOptions: github.ListOptions{
 			PerPage: count,
 		},

@@ -68,7 +68,7 @@ func run() error {
 	}
 	defer func() {
 		slog.Info("Closing Redis connection")
-		store.Close()
+		_ = store.Close()
 	}()
 
 	// Initialize Kubernetes runtime with informers

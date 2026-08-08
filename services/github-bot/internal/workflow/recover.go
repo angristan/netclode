@@ -45,7 +45,7 @@ func recoverSession(ctx context.Context, deps *Deps, s store.InFlightSession) {
 	if s.SessionID == "" {
 		logger.Warn("No session ID, cannot recover — updating comment with error")
 		if s.CommentID > 0 {
-			updateComment(ctx, deps.GH, s.Owner, s.Repo, s.CommentID, s.DeliveryID,
+			_ = updateComment(ctx, deps.GH, s.Owner, s.Repo, s.CommentID, s.DeliveryID,
 				"Netclode was restarted before the session could be created. Please try again.")
 		}
 		return
@@ -63,7 +63,7 @@ func recoverSession(ctx context.Context, deps *Deps, s store.InFlightSession) {
 			if result != nil && result.Response != "" {
 				body = result.Response + "\n\n---\n*Note: Netclode was restarted. The above is a partial response.*"
 			}
-			updateComment(ctx, deps.GH, s.Owner, s.Repo, s.CommentID, s.DeliveryID, body)
+			_ = updateComment(ctx, deps.GH, s.Owner, s.Repo, s.CommentID, s.DeliveryID, body)
 		}
 		// Clean up the session
 		go deleteSession(deps.CP, s.SessionID)

@@ -83,7 +83,7 @@ func (h *ConnectAgentServiceHandler) Connect(ctx context.Context, stream *connec
 
 	if k8sToken == "" {
 		slog.WarnContext(ctx, "Agent registration failed - no k8s_token", "version", reg.Version)
-		conn.send(&v1.ControlPlaneMessage{
+		_ = conn.send(&v1.ControlPlaneMessage{
 			Message: &v1.ControlPlaneMessage_Registered{
 				Registered: &v1.AgentRegistered{
 					Success: false,
@@ -99,7 +99,7 @@ func (h *ConnectAgentServiceHandler) Connect(ctx context.Context, stream *connec
 	podName, err := h.manager.VerifyAgentToken(ctx, k8sToken)
 	if err != nil {
 		slog.WarnContext(ctx, "Agent token verification failed", "error", err, "version", reg.Version)
-		conn.send(&v1.ControlPlaneMessage{
+		_ = conn.send(&v1.ControlPlaneMessage{
 			Message: &v1.ControlPlaneMessage_Registered{
 				Registered: &v1.AgentRegistered{
 					Success: false,
@@ -159,7 +159,7 @@ func (h *ConnectAgentServiceHandler) Connect(ctx context.Context, stream *connec
 	if !strings.HasPrefix(podName, expectedPrefix) {
 		err := fmt.Errorf("pod name %q doesn't match session %q (expected prefix %q)", podName, sessionID, expectedPrefix)
 		slog.Warn("Agent session verification failed", "error", err, "podName", podName, "sessionID", sessionID)
-		conn.send(&v1.ControlPlaneMessage{
+		_ = conn.send(&v1.ControlPlaneMessage{
 			Message: &v1.ControlPlaneMessage_Registered{
 				Registered: &v1.AgentRegistered{
 					Success: false,
@@ -178,7 +178,7 @@ func (h *ConnectAgentServiceHandler) Connect(ctx context.Context, stream *connec
 	config, err := h.manager.GetSessionConfig(ctx, sessionID)
 	if err != nil {
 		slog.Warn("Agent registration failed - session not found", "sessionID", sessionID, "error", err)
-		conn.send(&v1.ControlPlaneMessage{
+		_ = conn.send(&v1.ControlPlaneMessage{
 			Message: &v1.ControlPlaneMessage_Registered{
 				Registered: &v1.AgentRegistered{
 					Success: false,

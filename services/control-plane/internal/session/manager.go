@@ -206,11 +206,12 @@ func (m *Manager) Initialize(ctx context.Context) error {
 			state.ServiceFQDN = sb.ServiceFQDN
 			// If session was running, mark as interrupted (agent was processing when we lost connection)
 			// If session was creating, mark as ready (sandbox is ready to accept prompts)
-			if state.Session.Status == pb.SessionStatus_SESSION_STATUS_RUNNING {
+			switch state.Session.Status {
+			case pb.SessionStatus_SESSION_STATUS_RUNNING:
 				slog.InfoContext(ctx, "Session was running on restart, marking as interrupted", "sessionID", id)
 				state.Session.Status = pb.SessionStatus_SESSION_STATUS_INTERRUPTED
 				_ = m.storage.UpdateSessionStatus(ctx, id, pb.SessionStatus_SESSION_STATUS_INTERRUPTED)
-			} else if state.Session.Status == pb.SessionStatus_SESSION_STATUS_CREATING {
+			case pb.SessionStatus_SESSION_STATUS_CREATING:
 				state.Session.Status = pb.SessionStatus_SESSION_STATUS_READY
 				_ = m.storage.UpdateSessionStatus(ctx, id, pb.SessionStatus_SESSION_STATUS_READY)
 			}
@@ -370,12 +371,6 @@ func (m *Manager) createSandbox(ctx context.Context, sessionID string, repos []s
 	} else {
 		m.createSandboxDirect(ctx, sessionID, repos, repoAccess, tailnetEnabled, nil)
 	}
-}
-
-// createSandboxDirectOptions holds optional parameters for createSandboxDirect.
-type createSandboxDirectOptions struct {
-	restoreSnapshotID string
-	resources         *pb.SandboxResources
 }
 
 // createSandboxDirect creates a sandbox directly (legacy mode or custom resources mode).
@@ -1206,7 +1201,7 @@ func (m *Manager) restoreExposedPorts(ctx context.Context, sessionID string) {
 }
 
 // List returns all sessions, reconciling with K8s state.
-func (m *Manager) List(ctx context.Context) ([]pb.Session, error) {
+func (m *Manager) List(ctx context.Context) ([]*pb.Session, error) {
 	// Reconcile with K8s
 	sandboxes, err := m.k8s.ListSandboxes(ctx)
 	if err != nil {
@@ -1221,7 +1216,7 @@ func (m *Manager) List(ctx context.Context) ([]pb.Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	sessions := make([]pb.Session, 0, len(m.sessions))
+	sessions := make([]*pb.Session, 0, len(m.sessions))
 	for id, state := range m.sessions {
 		sb, exists := sandboxMap[id]
 		if !exists && (state.Session.Status == pb.SessionStatus_SESSION_STATUS_RUNNING || state.Session.Status == pb.SessionStatus_SESSION_STATUS_CREATING) {
@@ -1230,7 +1225,7 @@ func (m *Manager) List(ctx context.Context) ([]pb.Session, error) {
 		} else if exists && sb.Ready {
 			state.ServiceFQDN = sb.ServiceFQDN
 		}
-		sessions = append(sessions, *state.Session)
+		sessions = append(sessions, state.Session)
 	}
 
 	return sessions, nil
@@ -1305,13 +1300,13 @@ func (m *Manager) GetWithHistory(ctx context.Context, id string, afterStreamID s
 }
 
 // GetAllWithMeta returns all sessions with metadata.
-func (m *Manager) GetAllWithMeta(ctx context.Context) ([]pb.SessionSummary, error) {
+func (m *Manager) GetAllWithMeta(ctx context.Context) ([]*pb.SessionSummary, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	result := make([]pb.SessionSummary, 0, len(m.sessions))
+	result := make([]*pb.SessionSummary, 0, len(m.sessions))
 	for id, state := range m.sessions {
-		meta := pb.SessionSummary{Session: state.Session}
+		meta := &pb.SessionSummary{Session: state.Session}
 
 		count, err := m.storage.GetMessageCount(ctx, id)
 		if err == nil {
@@ -3103,10 +3098,8 @@ func (m *Manager) RestoreSnapshot(ctx context.Context, sessionID, snapshotID str
 
 	// Disconnect the agent (if connected)
 	m.mu.Lock()
-	if _, ok := m.agents[sessionID]; ok {
-		delete(m.agents, sessionID)
-		// The agent connection will be closed when the pod is deleted
-	}
+	// The agent connection will be closed when the pod is deleted
+	delete(m.agents, sessionID)
 	m.mu.Unlock()
 
 	// Clean up K8s resources (sandbox, PVC) - returns old PVC name for cleanup after restore
