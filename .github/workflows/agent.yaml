@@ -6,13 +6,11 @@ on:
     branches: [main, master]
     paths:
       - "services/agent/**"
-      - "packages/**"
       - ".github/workflows/agent.yaml"
   pull_request:
     branches: [main, master]
     paths:
       - "services/agent/**"
-      - "packages/**"
 
 env:
   REGISTRY: ghcr.io
@@ -49,6 +47,17 @@ jobs:
       - name: Type check
         run: npm run typecheck
         working-directory: services/agent
+
+      - name: Set up Go (auth-proxy)
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: services/agent/auth-proxy/go.mod
+          # auth-proxy has no dependencies, so there is no go.sum to cache
+          cache: false
+
+      - name: Test auth-proxy
+        run: go test -race ./...
+        working-directory: services/agent/auth-proxy
 
       # --- Build ---
       - name: Set up Docker Buildx
