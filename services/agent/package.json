@@ -11,21 +11,21 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.42",
-    "@anthropic-ai/sdk": "^0.74.0",
-    "@bufbuild/protobuf": "^2.11.0",
-    "@connectrpc/connect": "^2.1.1",
-    "@connectrpc/connect-node": "^2.1.1",
-    "@github/copilot-sdk": "^0.1.23",
-    "@openai/codex-sdk": "^0.101.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.197",
+    "@anthropic-ai/sdk": "^0.109.0",
+    "@bufbuild/protobuf": "^2.12.1",
+    "@connectrpc/connect": "^2.1.2",
+    "@connectrpc/connect-node": "^2.1.2",
+    "@github/copilot-sdk": "^1.0.4",
+    "@openai/codex-sdk": "^0.142.5",
     "node-pty": "^1.0.0",
-    "undici": "^7.24.0"
+    "undici": "^8.5.0"
   },
   "devDependencies": {
-    "@types/node": "^25.2.3",
-    "esbuild": "^0.27.3",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.2",
-    "vitest": "^4.0.18"
+    "@types/node": "^26.0.1",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
   }
 }
